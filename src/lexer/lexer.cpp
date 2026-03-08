@@ -80,9 +80,17 @@ void Lexer::skipWhitespace() {
         char c = peek();
         if(c == ' ' || c == '\n') {
             advance();
-        } else {
-            break;
+            continue;
         }
+
+        if(c == '/' && peekNext() == '/') {
+            while(!isAtEnd() && peek() != '\n') {
+                advance();
+            }
+            continue;
+        }
+
+        break;
     }
 }
 
