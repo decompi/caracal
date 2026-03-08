@@ -31,10 +31,10 @@ int main(int argc, char** argv) {
 
         // check what type of token it is and print token.lexeme
         if(token.kind == TokenKind::Identifier || token.kind == TokenKind::Integer || token.kind == TokenKind::Invalid) {
-            std::cout << "(" << token.lexeme << ")" << std::endl;
+            std::cout << "(" << token.lexeme << ")";
         }
 
-        std::cout << std::endl;
+        std::cout << " at " << token.line << ":" << token.column << std::endl;
 
         if(token.kind == TokenKind::Eof) {
             break;
