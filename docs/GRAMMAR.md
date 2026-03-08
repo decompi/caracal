@@ -3,9 +3,11 @@
 
 ## 1. Functions
 Structure:
+```text
   fn [NAME] () -> [TYPE] {
       [STATEMENTS...]
   }
+```
 
 ## 2. Statements
 Only 2 diff types so far

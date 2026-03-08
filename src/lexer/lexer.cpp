@@ -105,7 +105,7 @@ Token Lexer::number() {
         advance();
     }
 
-    return Lexer::makeToken(
+    return makeToken(
         TokenKind::Integer,
         source_.substr(startPos, pos_ - startPos),
         startLine,
@@ -125,28 +125,28 @@ Token Lexer::identifierOrKeyword() {
     std::string text = source_.substr(startPos, pos_ - startPos);
 
     if(text == "fn") {
-        return Lexer::makeToken(TokenKind::Fn, text, startLine, startColumn);
+        return makeToken(TokenKind::Fn, text, startLine, startColumn);
     }
     if(text == "let") {
-        return Lexer::makeToken(TokenKind::Let, text, startLine, startColumn);
+        return makeToken(TokenKind::Let, text, startLine, startColumn);
     }
     if(text == "if") {
-        return Lexer::makeToken(TokenKind::If, text, startLine, startColumn);
+        return makeToken(TokenKind::If, text, startLine, startColumn);
     }
     if(text == "else") {
-        return Lexer::makeToken(TokenKind::Else, text, startLine, startColumn);
+        return makeToken(TokenKind::Else, text, startLine, startColumn);
     }
     if(text == "while") {
-        return Lexer::makeToken(TokenKind::While, text, startLine, startColumn);
+        return makeToken(TokenKind::While, text, startLine, startColumn);
     }
     if(text == "return") {
-        return Lexer::makeToken(TokenKind::Return, text, startLine, startColumn);
+        return makeToken(TokenKind::Return, text, startLine, startColumn);
     }
     if(text == "i32") {
-        return Lexer::makeToken(TokenKind::I32, text, startLine, startColumn);
+        return makeToken(TokenKind::I32, text, startLine, startColumn);
     }
 
-    return Lexer::makeToken(TokenKind::Identifier, text, startLine, startColumn);
+    return makeToken(TokenKind::Identifier, text, startLine, startColumn);
 }
 
 
@@ -158,44 +158,44 @@ Token Lexer::nextToken() {
     int startColumn = column_;
 
     if(isAtEnd()) {
-        return Lexer::makeToken(TokenKind::Eof, "", startLine, startColumn);
+        return makeToken(TokenKind::Eof, "", startLine, startColumn);
     }
 
     char c = peek();
 
     // get the full word or number
     if(isDigit(c)) {
-        return Lexer::number();
+        return number();
     } else if(isAlpha(c)) {
-        return Lexer::identifierOrKeyword();
+        return identifierOrKeyword();
     }
 
     advance();
 
     switch(c) {
         case '(':
-            return Lexer::makeToken(TokenKind::LParen, "(", startLine, startColumn);
+            return makeToken(TokenKind::LParen, "(", startLine, startColumn);
         case ')':
-            return Lexer::makeToken(TokenKind::RParen, ")", startLine, startColumn);
+            return makeToken(TokenKind::RParen, ")", startLine, startColumn);
         case '{':
-            return Lexer::makeToken(TokenKind::LBrace, "{", startLine, startColumn);
+            return makeToken(TokenKind::LBrace, "{", startLine, startColumn);
         case '}':
-            return Lexer::makeToken(TokenKind::RBrace, "}", startLine, startColumn);
+            return makeToken(TokenKind::RBrace, "}", startLine, startColumn);
         case ':':
-            return Lexer::makeToken(TokenKind::Colon, ":", startLine, startColumn);
+            return makeToken(TokenKind::Colon, ":", startLine, startColumn);
         case ';':
-            return Lexer::makeToken(TokenKind::Semicolon, ";", startLine, startColumn);
+            return makeToken(TokenKind::Semicolon, ";", startLine, startColumn);
         case ',':
-            return Lexer::makeToken(TokenKind::Comma, ",", startLine, startColumn);
+            return makeToken(TokenKind::Comma, ",", startLine, startColumn);
         
         case '+':
-            return Lexer::makeToken(TokenKind::Plus, "+", startLine, startColumn);
+            return makeToken(TokenKind::Plus, "+", startLine, startColumn);
         case '*':
-            return Lexer::makeToken(TokenKind::Star, "-", startLine, startColumn);
+            return makeToken(TokenKind::Star, "-", startLine, startColumn);
         case '/':
-            return Lexer::makeToken(TokenKind::Slash, "/", startLine, startColumn);
+            return makeToken(TokenKind::Slash, "/", startLine, startColumn);
         case '&':
-            return Lexer::makeToken(TokenKind::Percent, "&", startLine, startColumn);
+            return makeToken(TokenKind::Percent, "&", startLine, startColumn);
         
         case '-': 
             if(match('>')) {
@@ -203,28 +203,28 @@ Token Lexer::nextToken() {
             }
             return makeToken(TokenKind::Minus, "-", startLine, startColumn);
         case '=':
-            if(Lexer::match('=')) {
-                return Lexer::makeToken(TokenKind::EqualEqual, "==", startLine, startColumn);
+            if(match('=')) {
+                return makeToken(TokenKind::EqualEqual, "==", startLine, startColumn);
             }
-            return Lexer::makeToken(TokenKind::Equal, "=", startLine, startColumn);
+            return makeToken(TokenKind::Equal, "=", startLine, startColumn);
         case '!':
-            if(Lexer::match('=')) {
-                return Lexer::makeToken(TokenKind::BangEqual, "!=", startLine, startColumn);
+            if(match('=')) {
+                return makeToken(TokenKind::BangEqual, "!=", startLine, startColumn);
             }
-            return Lexer::makeToken(TokenKind::Invalid, "!", startLine, startColumn);
+            return makeToken(TokenKind::Invalid, "!", startLine, startColumn);
         case '<':
-            if(Lexer::match('=')) {
-                return Lexer::makeToken(TokenKind::LessEqual, "<=", startLine, startColumn);
+            if(match('=')) {
+                return makeToken(TokenKind::LessEqual, "<=", startLine, startColumn);
             }
-            return Lexer::makeToken(TokenKind::Less, "<", startLine, startColumn);
+            return makeToken(TokenKind::Less, "<", startLine, startColumn);
         case '>':
-            if(Lexer::match('=')) {
-                return Lexer::makeToken(TokenKind::GreaterEqual, ">=", startLine, startColumn);
+            if(match('=')) {
+                return makeToken(TokenKind::GreaterEqual, ">=", startLine, startColumn);
             }
-            return Lexer::makeToken(TokenKind::Greater, ">", startLine, startColumn);
+            return makeToken(TokenKind::Greater, ">", startLine, startColumn);
 
         default:
-            return Lexer::makeToken(TokenKind::Invalid, std::string(1,c), startLine, startColumn);
+            return makeToken(TokenKind::Invalid, std::string(1,c), startLine, startColumn);
               
     }
 }
