@@ -164,8 +164,9 @@ namespace ast {
     };
 
     struct FunctionDecl {
-        std::string name, returnType;
+        std::string name;
         std::vector<Parameter> params;
+        std::string returnType;
         BlockStmtPtr body;
 
         FunctionDecl(std::string name, std::vector<Parameter> params, std::string returnType, BlockStmtPtr body):
