@@ -13,24 +13,29 @@ namespace ast {
     struct Program;
 
     using ExprPtr = std::unique_ptr<Expr>;
-    using StmtPtr = std::unique_ptr<StmtPtr>;
+    using StmtPtr = std::unique_ptr<Stmt>;
     using BlockStmtPtr = std::unique_ptr<BlockStmt>;
     using FunctionDeclPtr = std::unique_ptr<FunctionDecl>;
 
     // basic node types
+
+    // anything that evaluates
     struct Expr {
         virtual ~Expr() = default;
     };
+
+    // anything thta doesnt return a val
     struct Stmt {
         virtual ~Stmt() = default;
     };
 
     // expressions
+
     struct IntegerExpr : Expr {
         int value;
 
         explicit IntegerExpr(int value) : value(value) {
-            // empty on purpose
+
         }
     };
 
@@ -42,6 +47,7 @@ namespace ast {
         }
     };
 
+    // operator with one child (num, !true).. etc
     struct UnaryExpr : Expr {
         std::string op;
         ExprPtr operand;
@@ -51,6 +57,7 @@ namespace ast {
         }
     };
 
+    // an op with twochildren
     struct BinaryExpr: Expr {
         std::string op;
         ExprPtr left, right;
@@ -131,6 +138,10 @@ namespace ast {
 
     struct BlockStmt : Stmt {
         std::vector<StmtPtr> statements;
+
+        // block statements are still valid whenthey are empty
+        // need to force compiler to bring back empty constructor
+        // fn main() | still valid
         BlockStmt() = default;
 
         explicit BlockStmt(std::vector<StmtPtr> statements) : statements(std::move(statements)) {

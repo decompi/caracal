@@ -3,6 +3,7 @@
 
 #include "lexer/lexer.hpp"
 #include "common/token.hpp"
+#include "parser/parser.hpp"
 
 int main(int argc, char** argv) {
     if(argc < 2) {
@@ -13,7 +14,7 @@ int main(int argc, char** argv) {
     std::ifstream in(argv[1]);
 
     if(!in) {
-        std::cerr << "error: could not open file: " << argv[1] << "\n";
+        std::cerr << "error: could not open file: " << argv[1] << std::endl;
         return 1;
     }
 
@@ -23,22 +24,35 @@ int main(int argc, char** argv) {
     );
 
     Lexer lexer(source);
+    std::vector<Token> tokens;
 
+    
     while(true) {
         Token token = lexer.nextToken();
 
-        std::cout << tokenKindToString(token.kind);
-
-        // check what type of token it is and print token.lexeme
-        if(token.kind == TokenKind::Identifier || token.kind == TokenKind::Integer || token.kind == TokenKind::Invalid) {
-            std::cout << "(" << token.lexeme << ")";
+        if(token.kind == TokenKind::Invalid) {
+            std::cerr << "lex error: invalid token " << token.lexeme << " at " << token.line << ":" << token.column << std::endl;
+            
+            return 1;
         }
 
-        std::cout << " at " << token.line << ":" << token.column << std::endl;
+        tokens.push_back(token);
 
         if(token.kind == TokenKind::Eof) {
             break;
         }
+    }
+
+    try {
+        Parser parser(std::move(tokens));
+        ast::Program program = parser.parseProgram();
+        (void)program;
+
+        std::cout << "successfully parsed" << std::endl;
+    } catch (const std::exception &err) {
+        std::cerr << err.what() << std::endl;
+
+        return 1;
     }
 
     return 0;
