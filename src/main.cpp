@@ -6,6 +6,7 @@
 #include "common/token.hpp"
 #include "parser/parser.hpp"
 #include "sema/sema.hpp"
+#include "codegen/codegen.hpp"
 
 int main(int argc, char** argv) {
     if(argc < 2) {
@@ -51,9 +52,19 @@ int main(int argc, char** argv) {
         SemaAnalyzer sema;
         sema.analyze(program);
 
-        std::cout << "semantic analysis is done" << std::endl;
+        std::ofstream out("build/out.s");
+        if(!out) {
+            std::cerr << "can't open build/out.s for writing" << std::endl;
+            return 1;
+        }
+
+        CodeGenerator codegen(out);
+        codegen.generate(program);
+        std::cout << "codegen succeeded: wrote build/out.s" << std::endl;
+
+        /*std::cout << "semantic analysis is done" << std::endl;
         ast::AstPrinter printer(std::cout);
-        printer.print(program);
+        printer.print(program);*/
     } catch (const std::exception &err) {
         std::cerr << err.what() << std::endl;
         return 1;
