@@ -66,6 +66,7 @@ void SemaAnalyzer::analyzeStmt(const ast::Stmt &stmt) {
 
     if(const auto *returnStmt = dynamic_cast<const ast::ReturnStmt*>(&stmt)) {
         analyzeExpr(*returnStmt->value);
+        return; 
     }
 
     if(const auto* ifStmt = dynamic_cast<const ast::IfStmt*>(&stmt)) {
