@@ -21,9 +21,6 @@ bool Parser::isAtEnd() const {
 }
 
 bool Parser::check(TokenKind kind) const {
-    if(isAtEnd()) {
-        return false;
-    }
     return peek().kind == kind;
 }
 
