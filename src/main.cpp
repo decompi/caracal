@@ -1,13 +1,14 @@
 #include <iostream>
 #include <fstream>
 
+#include "ast/ast_printer.hpp"
 #include "lexer/lexer.hpp"
 #include "common/token.hpp"
 #include "parser/parser.hpp"
 
 int main(int argc, char** argv) {
     if(argc < 2) {
-        std::cerr << "usage: caracle <file>" << std::endl;
+        std::cerr << "usage: caracal <file>" << std::endl;
         return 1;
     }
 
@@ -32,7 +33,6 @@ int main(int argc, char** argv) {
 
         if(token.kind == TokenKind::Invalid) {
             std::cerr << "lex error: invalid token " << token.lexeme << " at " << token.line << ":" << token.column << std::endl;
-            
             return 1;
         }
 
@@ -46,12 +46,11 @@ int main(int argc, char** argv) {
     try {
         Parser parser(std::move(tokens));
         ast::Program program = parser.parseProgram();
-        (void)program;
 
-        std::cout << "successfully parsed" << std::endl;
+        ast::AstPrinter printer(std::cout);
+        printer.print(program);
     } catch (const std::exception &err) {
         std::cerr << err.what() << std::endl;
-
         return 1;
     }
 

@@ -8,4 +8,5 @@ clang++ -std=c++20 -O2 -Wall -Wextra -pedantic \
   src/common/token.cpp \
   src/lexer/lexer.cpp \
   src/parser/parser.cpp \
+  src/ast/ast_printer.cpp \
   -o build/caracal
