@@ -33,6 +33,11 @@ private:
     ast::StmtPtr parseReturnStmt();
 
     ast::ExprPtr parseExpression();
+    ast::ExprPtr parseEquality();
+    ast::ExprPtr parseComparison();
+    ast::ExprPtr parseAdditive();
+    ast::ExprPtr parseMultiplicative();
+    ast::ExprPtr parseUnary();
     ast::ExprPtr parsePrimary();
 
     [[noreturn]] void errorHere(const std::string &message) const;

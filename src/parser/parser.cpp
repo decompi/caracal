@@ -162,6 +162,66 @@ ast::StmtPtr Parser::parseReturnStmt() {
 }
 
 ast::ExprPtr Parser::parseExpression() {
+    return parseEquality();
+}
+
+ast::ExprPtr Parser::parseEquality() {
+    auto expr = parseComparison();
+
+    while(check(TokenKind::EqualEqual) || check(TokenKind::BangEqual)) {
+        Token op = advance();
+        auto right = parseComparison();
+        expr = std::make_unique<ast::BinaryExpr>(std::move(expr), op.lexeme, std::move(right));
+    } 
+    
+    return expr;
+}
+
+ast::ExprPtr Parser::parseComparison() {
+    auto expr = parseAdditive();
+
+    while(check(TokenKind::Less) || check(TokenKind::LessEqual) || check(TokenKind::Greater) || check(TokenKind::GreaterEqual)) {
+        Token op = advance();
+
+        auto right = parseAdditive();
+
+        expr = std::make_unique<ast::BinaryExpr>(std::move(expr), op.lexeme, std::move(right));
+    }
+
+    return expr;
+}
+
+ast::ExprPtr Parser::parseAdditive() {
+    auto expr = parseMultiplicative();
+
+    while(check(TokenKind::Plus) || check(TokenKind::Minus)) {
+        Token op = advance();
+        auto right = parseMultiplicative();
+        expr = std::make_unique<ast::BinaryExpr>(std::move(expr), op.lexeme, std::move(right));
+    }
+
+    return expr;
+}
+
+ast::ExprPtr Parser::parseMultiplicative() {
+    auto expr = parseUnary();
+
+    while(check(TokenKind::Star) || check(TokenKind::Slash) || check(TokenKind::Percent)) {
+        Token op = advance();
+        auto right = parseUnary();
+        expr = std::make_unique<ast::BinaryExpr>(std::move(expr), op.lexeme, std::move(right));
+    }
+
+    return expr;
+}
+
+ast::ExprPtr Parser::parseUnary() {
+    if(check(TokenKind::Minus)) {
+        Token op = advance();
+        auto operand = parseUnary();
+        return std::make_unique<ast::UnaryExpr>(op.lexeme, std::move(operand));
+    }
+
     return parsePrimary();
 }
 
@@ -177,6 +237,13 @@ ast::ExprPtr Parser::parsePrimary() {
         const Token &tok = advance();
 
         return std::make_unique<ast::VariableExpr>(tok.lexeme);
+    }
+
+    if(check(TokenKind::LParen)) {
+        advance();
+        auto expr = parseExpression();
+        consume(TokenKind::RParen, "expected ')' after expression");
+        return expr;
     }
 
     errorHere("expected an expression");
