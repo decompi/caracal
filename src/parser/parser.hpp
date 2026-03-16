@@ -31,6 +31,7 @@ private:
     ast::StmtPtr parseStatement();
     ast::StmtPtr parseLetStmt();
     ast::StmtPtr parseReturnStmt();
+    ast::StmtPtr parseAssignmentOrExprStmt();
 
     ast::ExprPtr parseExpression();
     ast::ExprPtr parseEquality();

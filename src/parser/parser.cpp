@@ -123,8 +123,28 @@ ast::StmtPtr Parser::parseStatement() {
     }
     
     // default fallback to parseExpressionStmt?
+    return parseAssignmentOrExprStmt();
 
-    errorHere("expected statement");
+    //errorHere("expected statement");
+}
+
+ast::StmtPtr Parser::parseAssignmentOrExprStmt() {
+    if(check(TokenKind::Identifier) && current_ + 1 < tokens_.size() && tokens_[current_ + 1].kind == TokenKind::Equal) {
+        const Token &nameTok = advance();
+        std::string name = nameTok.lexeme;
+
+        consume(TokenKind::Equal, "expected '=' in assignment");
+
+        auto value = parseExpression();
+
+        consume(TokenKind::Semicolon, "expected ';' after assignment");
+
+        return std::make_unique<ast::AssignStmt>(name, std::move(value));
+    }
+
+    auto expr = parseExpression();
+    consume(TokenKind::Semicolon, "expected ':' after expression statement");
+    return std::make_unique<ast::ExprStmt>(std::move(expr));
 }
 
 ast::StmtPtr Parser::parseLetStmt() {
