@@ -122,6 +122,13 @@ ast::StmtPtr Parser::parseStatement() {
         return parseReturnStmt();
     }
     
+    if(check(TokenKind::If)) {
+        return parseIfStmt();
+    }
+    if(check(TokenKind::While)) {
+        return parseWhileStmt();
+    }
+
     // default fallback to parseExpressionStmt?
     return parseAssignmentOrExprStmt();
 
@@ -143,8 +150,39 @@ ast::StmtPtr Parser::parseAssignmentOrExprStmt() {
     }
 
     auto expr = parseExpression();
-    consume(TokenKind::Semicolon, "expected ':' after expression statement");
+    consume(TokenKind::Semicolon, "expected ';' after expression statement");
     return std::make_unique<ast::ExprStmt>(std::move(expr));
+}
+
+ast::StmtPtr Parser::parseIfStmt() {
+    consume(TokenKind::If, "expected 'if'");
+    consume(TokenKind::LParen, "expected '(' after 'if'");
+
+    auto condition = parseExpression();
+    consume(TokenKind::RParen, "expected ')' after if condition");
+
+    auto thenBranch = parseBlock();
+    ast::BlockStmtPtr elseBranch = nullptr;
+
+    if(check(TokenKind::Else)) {
+        advance();
+        elseBranch = parseBlock();
+    }
+
+    return std::make_unique<ast::IfStmt>(std::move(condition), std::move(thenBranch), std::move(elseBranch));
+}   
+
+ast::StmtPtr Parser::parseWhileStmt() {
+    consume(TokenKind::While, "expected 'while'");
+    consume(TokenKind::LParen, "expected '(' after 'while'");
+
+    auto condition = parseExpression();
+
+    consume(TokenKind::RParen, "expected ')' after while condition");
+
+    auto body = parseBlock();
+
+    return std::make_unique<ast::WhileStmt>(std::move(condition), std::move(body));
 }
 
 ast::StmtPtr Parser::parseLetStmt() {

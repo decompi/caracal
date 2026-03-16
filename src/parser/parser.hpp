@@ -28,7 +28,10 @@ private:
 
     ast::FunctionDeclPtr parseFunction();
     ast::BlockStmtPtr parseBlock();
+
     ast::StmtPtr parseStatement();
+    ast::StmtPtr parseIfStmt();
+    ast::StmtPtr parseWhileStmt();
     ast::StmtPtr parseLetStmt();
     ast::StmtPtr parseReturnStmt();
     ast::StmtPtr parseAssignmentOrExprStmt();
