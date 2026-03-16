@@ -5,6 +5,7 @@
 #include "lexer/lexer.hpp"
 #include "common/token.hpp"
 #include "parser/parser.hpp"
+#include "sema/sema.hpp"
 
 int main(int argc, char** argv) {
     if(argc < 2) {
@@ -47,6 +48,10 @@ int main(int argc, char** argv) {
         Parser parser(std::move(tokens));
         ast::Program program = parser.parseProgram();
 
+        SemaAnalyzer sema;
+        sema.analyze(program);
+
+        std::cout << "semantic analysis is done" << std::endl;
         ast::AstPrinter printer(std::cout);
         printer.print(program);
     } catch (const std::exception &err) {
