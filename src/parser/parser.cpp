@@ -66,7 +66,7 @@ ast::Program Parser::parseProgram() {
 }
 
 ast::FunctionDeclPtr Parser::parseFunction() {
-    consume(TokenKind::Fn, "exepected fn");
+    consume(TokenKind::Fn, "expected fn");
 
     const Token &nameTok = consume(TokenKind::Identifier, "expected function name");
     std::string name = nameTok.lexeme;
@@ -99,7 +99,7 @@ ast::BlockStmtPtr Parser::parseBlock() {
         statements.push_back(parseStatement());
     }
 
-    consume(TokenKind::RBrace, "expected } to end the blocjk");
+    consume(TokenKind::RBrace, "expected } to end the block");
 
     return std::make_unique<ast::BlockStmt>(std::move(statements));
 }
@@ -133,21 +133,21 @@ ast::StmtPtr Parser::parseLetStmt() {
     const Token &nameTok = consume(TokenKind::Identifier, "expected a variable name");
     std::string varName = nameTok.lexeme;
 
-    consume(TokenKind::Colon, "expecteda a ':' after the variable name");
+    consume(TokenKind::Colon, "expected a ':' after the variable name");
     
     // change this when more types are added
     consume(TokenKind::I32, "expected type i32");
 
     consume(TokenKind::Equal, "expected a = after the variable name");
 
-    auto inializer = parseExpression();
+    auto initializer = parseExpression();
 
     consume(TokenKind::Semicolon, "expected ; after the let statement");
 
     return std::make_unique<ast::LetStmt>(
         varName,
         "i32",
-        std::move(inializer)
+        std::move(initializer)
     );
 }
 
@@ -179,5 +179,5 @@ ast::ExprPtr Parser::parsePrimary() {
         return std::make_unique<ast::VariableExpr>(tok.lexeme);
     }
 
-    errorHere("expected a expression");
+    errorHere("expected an expression");
 }
