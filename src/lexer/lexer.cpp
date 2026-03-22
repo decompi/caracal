@@ -202,8 +202,8 @@ Token Lexer::nextToken() {
             return makeToken(TokenKind::Star, "*", startLine, startColumn);
         case '/':
             return makeToken(TokenKind::Slash, "/", startLine, startColumn);
-        case '&':
-            return makeToken(TokenKind::Percent, "&", startLine, startColumn);
+        case '%':
+            return makeToken(TokenKind::Percent, "%", startLine, startColumn);
         
         case '-': 
             if(match('>')) {
