@@ -27,6 +27,7 @@ CodeGenerator::CodeGenerator(std::ostream& out) : out_(out), nextLocalOffset_(16
 
 void CodeGenerator::generate(const ast::Program& program) {
     for (const auto& fn : program.functions) {
+        //dumpAst(*fn.body, std::cerr);
         generateFunction(*fn);
     }
 }

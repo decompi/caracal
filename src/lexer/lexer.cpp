@@ -199,7 +199,7 @@ Token Lexer::nextToken() {
         case '+':
             return makeToken(TokenKind::Plus, "+", startLine, startColumn);
         case '*':
-            return makeToken(TokenKind::Star, "-", startLine, startColumn);
+            return makeToken(TokenKind::Star, "*", startLine, startColumn);
         case '/':
             return makeToken(TokenKind::Slash, "/", startLine, startColumn);
         case '&':
