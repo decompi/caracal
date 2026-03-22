@@ -117,8 +117,31 @@ void SemaAnalyzer::analyzeExpr(const ast::Expr& expr) {
     }
 
     if(const auto *callExpr = dynamic_cast<const ast::CallExpr*>(&expr)) {
+        auto it = functions_.find(callExpr->callee);
+        if(it == functions_.end()) {
+            if(callExpr->callee != "print") {
+                error("call to undeclared function '" + callExpr->callee + "'");
+            }
+        }
+
         for(const auto &arg : callExpr->arguments) {
             analyzeExpr(*arg);
+        }
+
+        if(callExpr->callee == "print") {
+            if(callExpr->arguments.size() != 1) {
+                error("print expects exactly 1 argument");
+            }
+            return;
+        }
+
+        const ast::FunctionDecl *fn = it->second;
+        if(callExpr->arguments.size() != fn->params.size()) {
+            error(
+                "function '" + callExpr->callee + "' expects " +
+                std::to_string(fn->params.size()) + " argument(s), got " +
+                std::to_string(callExpr->arguments.size())
+            );
         }
         return;
     }

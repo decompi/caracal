@@ -65,6 +65,59 @@ ast::Program Parser::parseProgram() {
     return ast::Program(std::move(functions));
 }
 
+std::vector<ast::Parameter> Parser::parseParameterList() {
+    std::vector<ast::Parameter> params;
+
+    if(check(TokenKind::RParen)) {
+        return params;
+    }
+
+    do {
+        const Token &nameTok = consume(TokenKind::Identifier, "expected parameter name");
+        consume(TokenKind::Colon, "expected ':' after parameter name");
+        consume(TokenKind::I32, "expected parameter type i32");
+
+        params.emplace_back(nameTok.lexeme, "i32");
+    } while(match(TokenKind::Comma));
+
+    return params;
+}
+
+std::vector<ast::ExprPtr> Parser::parseArgumentList() {
+    std::vector<ast::ExprPtr> args;
+
+    if(check(TokenKind::RParen)) {
+        return args;
+    }
+
+    do {
+        args.push_back(parseExpression());
+    } while(match(TokenKind::Comma));
+
+    return args;
+}
+
+ast::ExprPtr Parser::parsePostfix() {
+    auto expr = parsePrimary();
+
+    while(check(TokenKind::LParen)) {
+        advance(); // so it consumes '('
+
+        auto args = parseArgumentList();
+        consume(TokenKind::RParen, "expected ')' after argument list");
+
+        auto *varExpr = dynamic_cast<ast::VariableExpr*>(expr.get());
+        if(!varExpr) {
+            errorHere("can only call a function by identifier");
+        }
+
+        std::string callee = varExpr->name;
+        expr = std::make_unique<ast::CallExpr>(callee, std::move(args));
+    }
+
+    return expr;
+}
+
 ast::FunctionDeclPtr Parser::parseFunction() {
     consume(TokenKind::Fn, "expected fn");
 
@@ -72,9 +125,10 @@ ast::FunctionDeclPtr Parser::parseFunction() {
     std::string name = nameTok.lexeme;
 
     consume(TokenKind::LParen, "expected ( after function name");
+    auto params = parseParameterList();
     consume(TokenKind::RParen, "expected ) after function params");
-    consume(TokenKind::Arrow, "expected -> after function param list");
 
+    consume(TokenKind::Arrow, "expected -> after function param list");
     // keep the return type at i32 only for testing
     // change later with a system that can handle diff types
     // when more types get added
@@ -84,7 +138,7 @@ ast::FunctionDeclPtr Parser::parseFunction() {
 
     return std::make_unique<ast::FunctionDecl>(
         name,
-        std::vector<ast::Parameter>{},
+        std::move(params),
         "i32",
         std::move(body)
     );
