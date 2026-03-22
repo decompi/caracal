@@ -334,7 +334,7 @@ ast::ExprPtr Parser::parseUnary() {
         return std::make_unique<ast::UnaryExpr>(op.lexeme, std::move(operand));
     }
 
-    return parsePrimary();
+    return parsePostfix();
 }
 
 ast::ExprPtr Parser::parsePrimary() {
