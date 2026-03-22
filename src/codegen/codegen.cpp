@@ -20,15 +20,22 @@ ssh decompi@caracl-pi '~/out; echo $?'
 #include "codegen.hpp"
 
 #include <stdexcept>
+#include <vector>
 
-CodeGenerator::CodeGenerator(std::ostream& out) : out_(out), nextLocalOffset_(16), tempDepth_(0), labelCounter_(0) {
-
+CodeGenerator::CodeGenerator(std::ostream &out) : out_(out), nextLocalOffset_(16), tempDepth_(0), labelCounter_(0) {
 }
 
-void CodeGenerator::generate(const ast::Program& program) {
+void CodeGenerator::generate(const ast::Program &program) {
+    out_ << ".section .rodata\n";
+    out_ << ".Lprint_fmt:\n";
+    out_ << "    .asciz \"%d\\n\"\n\n";
+
+    out_ << ".text\n";
+    out_ << ".extern printf\n\n";
+
     for (const auto& fn : program.functions) {
-        //dumpAst(*fn.body, std::cerr);
         generateFunction(*fn);
+        out_ << "\n";
     }
 }
 
@@ -42,7 +49,7 @@ void CodeGenerator::popScope() {
     }
 }
 
-int CodeGenerator::declareLocal(const std::string& name) {
+int CodeGenerator::declareLocal(const std::string &name) {
     if (localScopes_.empty()) {
         error("internal codegen error: no active scope for local '" + name + "'");
     }
@@ -63,7 +70,7 @@ int CodeGenerator::declareLocal(const std::string& name) {
     return offset;
 }
 
-int CodeGenerator::lookupLocal(const std::string& name) const {
+int CodeGenerator::lookupLocal(const std::string &name) const {
     for (auto it = localScopes_.rbegin(); it != localScopes_.rend(); ++it) {
         auto found = it->find(name);
         if (found != it->end()) {
@@ -78,24 +85,19 @@ int CodeGenerator::currentTempOffset() const {
     return TEMP_BASE_OFFSET + tempDepth_ * LOCAL_SLOT_SIZE;
 }
 
-std::string CodeGenerator::makeLabel(const std::string& prefix) {
+std::string CodeGenerator::makeLabel(const std::string &prefix) {
     return ".L" + prefix + "_" + std::to_string(labelCounter_++);
 }
 
-void CodeGenerator::generateFunction(const ast::FunctionDecl& fn) {
-    if (fn.name != "main") {
-        error("only codegen for 'main' is supported right now");
-    }
-
+void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
     localScopes_.clear();
     nextLocalOffset_ = 16;
     tempDepth_ = 0;
     currentReturnLabel_ = makeLabel("return");
 
-    out_ << ".text\n";
-    out_ << ".global main\n";
+    out_ << ".global " << fn.name << "\n";
     out_ << ".align 2\n";
-    out_ << "main:\n";
+    out_ << fn.name << ":\n";
 
     out_ << "    stp x29, x30, [sp, -16]!\n";
     out_ << "    mov x29, sp\n";
@@ -103,7 +105,18 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl& fn) {
     out_ << "    mov x28, sp\n";
 
     pushScope();
+
+    if (fn.params.size() > 8) {
+        error("more than 8 function parameters not supported yet");
+    }
+
+    for (std::size_t i = 0; i < fn.params.size(); ++i) {
+        int offset = declareLocal(fn.params[i].name);
+        out_ << "    str w" << i << ", [x28, #" << offset << "]\n";
+    }
+
     generateBlock(*fn.body);
+
     popScope();
 
     out_ << currentReturnLabel_ << ":\n";
@@ -112,7 +125,7 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl& fn) {
     out_ << "    ret\n";
 }
 
-void CodeGenerator::generateBlock(const ast::BlockStmt& block) {
+void CodeGenerator::generateBlock(const ast::BlockStmt &block) {
     pushScope();
 
     for (const auto& stmt : block.statements) {
@@ -122,7 +135,7 @@ void CodeGenerator::generateBlock(const ast::BlockStmt& block) {
     popScope();
 }
 
-void CodeGenerator::generateStmt(const ast::Stmt& stmt) {
+void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
     if (const auto* letStmt = dynamic_cast<const ast::LetStmt*>(&stmt)) {
         int offset = declareLocal(letStmt->name);
         generateExpr(*letStmt->initializer);
@@ -294,8 +307,45 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
         error("unsupported binary operator '" + op + "'");
     }
 
-    if (dynamic_cast<const ast::CallExpr*>(&expr)) {
-        error("function call codegen is not supported yet");
+    if (const auto* callExpr = dynamic_cast<const ast::CallExpr*>(&expr)) {
+        if (callExpr->callee == "print") {
+            if (callExpr->arguments.size() != 1) {
+                error("print expects exactly 1 argument");
+            }
+
+            generateExpr(*callExpr->arguments[0]);
+            out_ << "    mov w1, w0\n";
+            out_ << "    adrp x0, .Lprint_fmt\n";
+            out_ << "    add x0, x0, :lo12:.Lprint_fmt\n";
+            out_ << "    bl printf\n";
+            out_ << "    mov w0, #0\n";
+            return;
+        }
+
+        if (callExpr->arguments.size() > 8) {
+            error("more than 8 call arguments not supported yet");
+        }
+
+        std::vector<int> argOffsets;
+        argOffsets.reserve(callExpr->arguments.size());
+
+        int savedTempDepth = tempDepth_;
+
+        for (const auto& arg : callExpr->arguments) {
+            int argOffset = currentTempOffset();
+            generateExpr(*arg);
+            out_ << "    str w0, [x28, #" << argOffset << "]\n";
+            argOffsets.push_back(argOffset);
+            tempDepth_++;
+        }
+
+        for (std::size_t i = 0; i < argOffsets.size(); ++i) {
+            out_ << "    ldr w" << i << ", [x28, #" << argOffsets[i] << "]\n";
+        }
+
+        tempDepth_ = savedTempDepth;
+        out_ << "    bl " << callExpr->callee << "\n";
+        return;
     }
 
     error("unsupported expression in codegen");

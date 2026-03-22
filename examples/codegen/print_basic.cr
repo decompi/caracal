@@ -1,0 +1,4 @@
+fn main() -> i32 {
+    print(7);
+    return 0;
+}
