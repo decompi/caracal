@@ -199,6 +199,10 @@ Token Lexer::nextToken() {
             return makeToken(TokenKind::LBrace, "{", startLine, startColumn);
         case '}':
             return makeToken(TokenKind::RBrace, "}", startLine, startColumn);
+        case '[':
+            return makeToken(TokenKind::LBracket, "[", startLine, startColumn);
+        case ']':
+            return makeToken(TokenKind::RBracket, "]", startLine, startColumn);
         case ':':
             return makeToken(TokenKind::Colon, ":", startLine, startColumn);
         case ';':

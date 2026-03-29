@@ -87,6 +87,23 @@ namespace ast {
 
         }
     };
+
+    struct ArrayLiteralExpr : Expr {
+        std::vector<ExprPtr> elements;
+
+        explicit ArrayLiteralExpr(std::vector<ExprPtr> elements) : elements(std::move(elements)) {
+
+        }
+    };
+
+    struct IndexExpr : Expr {
+        ExprPtr base;
+        ExprPtr index;
+
+        IndexExpr(ExprPtr base, ExprPtr index) : base(std::move(base)), index(std::move(index)) {
+            
+        }
+    };
     // statements
 
     struct LetStmt: Stmt {
@@ -108,6 +125,20 @@ namespace ast {
 
         }
     };
+
+    struct IndexAssignStmt : Stmt {
+        std::string arrayName;
+        ExprPtr index;
+        ExprPtr value;
+
+        IndexAssignStmt(std::string arrayName, ExprPtr index, ExprPtr value) 
+            : arrayName(std::move(arrayName)),
+            index(std::move(index)),
+            value(std::move(value)) {
+
+        }
+    };
+
 
     struct ExprStmt : Stmt {
         ExprPtr expr;

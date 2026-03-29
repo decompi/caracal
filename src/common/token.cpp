@@ -43,6 +43,10 @@ std::string tokenKindToString(TokenKind kind) {
             return "LBrace";
         case TokenKind::RBrace:
             return "RBrace";
+        case TokenKind::LBracket:
+            return "LBracket";
+        case TokenKind::RBracket:
+            return "RBracket";
         case TokenKind::Colon:
             return "Colon";
         case TokenKind::Semicolon:

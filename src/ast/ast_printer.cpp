@@ -62,6 +62,21 @@ namespace ast {
             return;
         }
 
+        if (const auto* indexAssignStmt = dynamic_cast<const IndexAssignStmt*>(&stmt)) {
+            indent(level);
+            out_ << "IndexAssignStmt(" << indexAssignStmt->arrayName << ")\n";
+
+            indent(level + 1);
+            out_ << "Index\n";
+            printExpr(*indexAssignStmt->index, level + 2);
+
+            indent(level + 1);
+            out_ << "Value\n";
+            printExpr(*indexAssignStmt->value, level + 2);
+            return;
+        }
+
+
         if (const auto* exprStmt = dynamic_cast<const ExprStmt*>(&stmt)) {
             indent(level);
             out_ << "ExprStmt\n";
@@ -146,6 +161,30 @@ namespace ast {
             printExpr(*binaryExpr->right, level + 1);
             return;
         }
+
+        if (const auto* arrayLiteralExpr = dynamic_cast<const ArrayLiteralExpr*>(&expr)) {
+            indent(level);
+            out_ << "ArrayLiteral\n";
+            for (const auto &element : arrayLiteralExpr->elements) {
+                printExpr(*element, level + 1);
+            }
+            return;
+        }
+
+        if (const auto* indexExpr = dynamic_cast<const IndexExpr*>(&expr)) {
+            indent(level);
+            out_ << "IndexExpr\n";
+
+            indent(level + 1);
+            out_ << "Base\n";
+            printExpr(*indexExpr->base, level + 2);
+
+            indent(level + 1);
+            out_ << "Index\n";
+            printExpr(*indexExpr->index, level + 2);
+            return;
+        }
+
 
         if (const auto *callExpr = dynamic_cast<const CallExpr*>(&expr)) {
             indent(level);
