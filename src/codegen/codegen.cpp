@@ -217,11 +217,18 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
         return;
     }
 
+    if (const auto* boolExpr = dynamic_cast<const ast::BoolExpr*>(&expr)) {
+        out_ << "    mov w0, #" << (boolExpr->value ? 1 : 0) << "\n";
+        return;
+    }
+
+
     if (const auto* unaryExpr = dynamic_cast<const ast::UnaryExpr*>(&expr)) {
         generateExpr(*unaryExpr->operand);
 
-        if (unaryExpr->op == "-") {
-            out_ << "    neg w0, w0\n";
+        if (unaryExpr->op == "!") {
+            out_ << "    cmp w0, #0\n";
+            out_ << "    cset w0, eq\n";
             return;
         }
 

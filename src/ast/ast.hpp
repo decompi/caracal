@@ -94,7 +94,7 @@ namespace ast {
         Type type;
         ExprPtr initializer;
 
-        LetStmt(std::string name, Type typeName, ExprPtr initializer)
+        LetStmt(std::string name, Type type, ExprPtr initializer)
             : name(std::move(name)),
             type(type),
             initializer(std::move(initializer)) {}
