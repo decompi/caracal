@@ -48,5 +48,7 @@ private:
     ast::ExprPtr parsePostfix();
     ast::ExprPtr parsePrimary();
 
+    ast::Type parseType();
+
     [[noreturn]] void errorHere(const std::string &message) const;
 };

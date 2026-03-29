@@ -75,9 +75,10 @@ std::vector<ast::Parameter> Parser::parseParameterList() {
     do {
         const Token &nameTok = consume(TokenKind::Identifier, "expected parameter name");
         consume(TokenKind::Colon, "expected ':' after parameter name");
-        consume(TokenKind::I32, "expected parameter type i32");
+        //consume(TokenKind::I32, "expected parameter type i32");
+        ast::Type type = parseType();
 
-        params.emplace_back(nameTok.lexeme, "i32");
+        params.emplace_back(nameTok.lexeme, type);
     } while(match(TokenKind::Comma));
 
     return params;
@@ -132,14 +133,15 @@ ast::FunctionDeclPtr Parser::parseFunction() {
     // keep the return type at i32 only for testing
     // change later with a system that can handle diff types
     // when more types get added
-    consume(TokenKind::I32, "expected return type i32");
+    //consume(TokenKind::I32, "expected return type i32");
+    ast::Type returnType = parseType();
 
     auto body = parseBlock();
 
     return std::make_unique<ast::FunctionDecl>(
         name,
         std::move(params),
-        "i32",
+        returnType,
         std::move(body)
     );
 }
@@ -248,7 +250,8 @@ ast::StmtPtr Parser::parseLetStmt() {
     consume(TokenKind::Colon, "expected a ':' after the variable name");
     
     // change this when more types are added
-    consume(TokenKind::I32, "expected type i32");
+    //consume(TokenKind::I32, "expected type i32");
+    ast::Type varType = parseType();
 
     consume(TokenKind::Equal, "expected a = after the variable name");
 
@@ -258,7 +261,7 @@ ast::StmtPtr Parser::parseLetStmt() {
 
     return std::make_unique<ast::LetStmt>(
         varName,
-        "i32",
+        varType,
         std::move(initializer)
     );
 }
@@ -328,7 +331,7 @@ ast::ExprPtr Parser::parseMultiplicative() {
 }
 
 ast::ExprPtr Parser::parseUnary() {
-    if(check(TokenKind::Minus)) {
+    if(check(TokenKind::Minus) || check(TokenKind::Bang)) {
         Token op = advance();
         auto operand = parseUnary();
         return std::make_unique<ast::UnaryExpr>(op.lexeme, std::move(operand));
@@ -358,5 +361,23 @@ ast::ExprPtr Parser::parsePrimary() {
         return expr;
     }
 
+    if(match(TokenKind::True)) {
+        return std::make_unique<ast::BoolExpr>(true);
+    }
+    if(match(TokenKind::False)) {
+        return std::make_unique<ast::BoolExpr>(false);
+    }
+
     errorHere("expected an expression");
+}
+
+ast::Type Parser::parseType() {
+    if(match(TokenKind::I32)) {
+        return ast::Type::i32();
+    }
+    if(match(TokenKind::Bool)) {
+        return ast::Type::boolean();
+    }
+
+    errorHere("expected type");
 }
