@@ -263,6 +263,16 @@ void SemaAnalyzer::declareVariable(const std::string &name, ast::Type type) {
 
     return false;
 }*/
+ast::Type SemaAnalyzer::lookupVariable(const std::string &name) const {
+    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) {
+            return found->second;
+        }
+    }
+
+    error("use of undeclared variable '" + name + "'");
+}
 
 [[noreturn]] void SemaAnalyzer::error(const std::string &message) const {
     throw std::runtime_error("semantic error: " + message);
