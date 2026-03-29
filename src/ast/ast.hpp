@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 
+#include "type.hpp"
+
 namespace ast {
     struct Expr;
     struct Stmt;
@@ -79,16 +81,22 @@ namespace ast {
         }
     };
 
+    struct BoolExpr : Expr {
+        bool value;
+        explicit BoolExpr(bool value) : value(value) {
+
+        }
+    };
     // statements
 
     struct LetStmt: Stmt {
         std::string name;
-        std::string typeName;
+        Type type;
         ExprPtr initializer;
 
-        LetStmt(std::string name, std::string typeName, ExprPtr initializer)
+        LetStmt(std::string name, Type typeName, ExprPtr initializer)
             : name(std::move(name)),
-            typeName(std::move(typeName)),
+            type(type),
             initializer(std::move(initializer)) {}
     };
 
@@ -156,9 +164,10 @@ namespace ast {
     // top level
 
     struct Parameter {
-        std::string name, typeName;
+        std::string name;
+        Type type;
 
-        Parameter(std::string name, std::string typeName) : name(std::move(name)), typeName(std::move(typeName)) {
+        Parameter(std::string name, Type type) : name(std::move(name)), type(type) {
 
         }
     };
@@ -166,13 +175,13 @@ namespace ast {
     struct FunctionDecl {
         std::string name;
         std::vector<Parameter> params;
-        std::string returnType;
+        Type returnType;
         BlockStmtPtr body;
 
-        FunctionDecl(std::string name, std::vector<Parameter> params, std::string returnType, BlockStmtPtr body):
+        FunctionDecl(std::string name, std::vector<Parameter> params, Type returnType, BlockStmtPtr body):
             name(std::move(name)),
             params(std::move(params)),
-            returnType(std::move(returnType)),
+            returnType(returnType),
             body(std::move(body)) {
 
         }

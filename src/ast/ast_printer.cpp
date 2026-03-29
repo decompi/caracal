@@ -29,11 +29,11 @@ namespace ast {
 
         for(const auto &param : fn.params) {
             indent(level + 2);
-            out_ << "Param(" << param.name << ": " << param.typeName << ")" << std::endl;
+            out_ << "Param(" << param.name << ": " << toString(param.type) << ")" << std::endl;
         }
 
         indent(level + 1);
-        out_ << "ReturnType(" << fn.returnType << ")" << std::endl;
+        out_ << "ReturnType(" << toString(fn.returnType) << ")" << std::endl;
 
         printBlockStmt(*fn.body, level + 1);
     }
@@ -50,7 +50,7 @@ namespace ast {
     void AstPrinter::printStmt(const Stmt& stmt, int level) {
         if (const auto* letStmt = dynamic_cast<const LetStmt*>(&stmt)) {
             indent(level);
-            out_ << "LetStmt(" << letStmt->name << ": " << letStmt->typeName << ")\n";
+            out_ << "LetStmt(" << letStmt->name << ": " << toString(letStmt->type) << ")\n";
             printExpr(*letStmt->initializer, level + 1);
             return;
         }
