@@ -153,6 +153,16 @@ Token Lexer::identifierOrKeyword() {
     if(text == "i32") {
         return makeToken(TokenKind::I32, text, startLine, startColumn);
     }
+    if(text == "bool") {
+        return makeToken(TokenKind::Bool, text, startLine, startColumn);
+    }
+    if(text == "true") {
+        return makeToken(TokenKind::True, text, startLine, startColumn);
+    }
+    if(text == "false") {
+        return makeToken(TokenKind::False, text, startLine, startColumn);
+    }
+
 
     return makeToken(TokenKind::Identifier, text, startLine, startColumn);
 }
@@ -219,7 +229,7 @@ Token Lexer::nextToken() {
             if(match('=')) {
                 return makeToken(TokenKind::BangEqual, "!=", startLine, startColumn);
             }
-            return makeToken(TokenKind::Invalid, "!", startLine, startColumn);
+            return makeToken(TokenKind::Bang, "!", startLine, startColumn);
         case '<':
             if(match('=')) {
                 return makeToken(TokenKind::LessEqual, "<=", startLine, startColumn);

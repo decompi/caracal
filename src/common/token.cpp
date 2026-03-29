@@ -28,6 +28,12 @@ std::string tokenKindToString(TokenKind kind) {
             return "Return";
         case TokenKind::I32:
             return "I32";
+        case TokenKind::Bool:
+            return "Bool";
+        case TokenKind::True:
+            return "True";
+        case TokenKind::False:
+            return "False";
 
         case TokenKind::LParen:
             return "LParen";
@@ -57,6 +63,8 @@ std::string tokenKindToString(TokenKind kind) {
             return "Percent";
         case TokenKind::Equal:
             return "Equal";
+        case TokenKind::Bang:
+            return "Bang";
         case TokenKind::EqualEqual:
             return "EqualEqual";
         case TokenKind::BangEqual:

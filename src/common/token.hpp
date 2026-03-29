@@ -21,6 +21,9 @@ enum class TokenKind {
     While,
     Return,
     I32,
+    Bool,
+    True,
+    False,
 
     // punctuation
     LParen,
@@ -38,6 +41,7 @@ enum class TokenKind {
     Slash,
     Percent,
     Equal,
+    Bang,
     EqualEqual,
     BangEqual,
     Less,
