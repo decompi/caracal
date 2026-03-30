@@ -7,9 +7,16 @@
 
 #include "../ast/ast.hpp"
 
+struct LocalInfo {
+    int offset;
+    ast::Type type;
+};
+
+
 struct CodeGenerator {
     explicit CodeGenerator(std::ostream &out);
     void generate(const ast::Program &program);
+
 private:
     static constexpr int FRAME_SIZE = 512;
     static constexpr int LOCAL_SLOT_SIZE = 16;
@@ -17,11 +24,12 @@ private:
 
     std::ostream &out_;
 
-    std::vector<std::unordered_map<std::string, int>> localScopes_;
+    std::vector<std::unordered_map<std::string, LocalInfo>> localScopes_;
     int nextLocalOffset_;
     int tempDepth_;
     int labelCounter_;
     std::string currentReturnLabel_;
+    std::string currentBoundsTrapLabel_;
 
     void generateFunction(const ast::FunctionDecl &fn);
     void generateBlock(const ast::BlockStmt &block);
@@ -31,11 +39,12 @@ private:
     void pushScope();
     void popScope();
 
-    int declareLocal(const std::string &name);
-    int lookupLocal(const std::string &name) const;
+    LocalInfo declareLocal(const std::string &name, const ast::Type &type);
+    LocalInfo lookupLocal(const std::string &name) const;
 
     int currentTempOffset() const;
     std::string makeLabel(const std::string &prefix);
+    void generateArrayBoundsCheck(const LocalInfo &arrayInfo);
 
     [[noreturn]] void error(const std::string &message) const;
 };

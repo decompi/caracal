@@ -1,28 +1,10 @@
-/*
-
-# Goal is to generate ARM64 assembly for this right now
-
-fn main() -> i32 {
-    return 5;
-}
-
-# build to arm64 with the command
-aarch64-linux-gnu-gcc build/out.s -o build.out
-
-# then copy to raspberry pi and run it
-scp build/out decompi@caracal-pi:~/out
-ssh decompi@caracl-pi '~/out; echo $?'
-
-^ exit code should be 5
-
-*/
-
 #include "codegen.hpp"
 
 #include <stdexcept>
 #include <vector>
 
-CodeGenerator::CodeGenerator(std::ostream &out) : out_(out), nextLocalOffset_(16), tempDepth_(0), labelCounter_(0) {
+CodeGenerator::CodeGenerator(std::ostream &out)
+    : out_(out), nextLocalOffset_(16), tempDepth_(0), labelCounter_(0) {
 }
 
 void CodeGenerator::generate(const ast::Program &program) {
@@ -31,9 +13,10 @@ void CodeGenerator::generate(const ast::Program &program) {
     out_ << "    .asciz \"%d\\n\"\n\n";
 
     out_ << ".text\n";
-    out_ << ".extern printf\n\n";
+    out_ << ".extern printf\n";
+    out_ << ".extern abort\n\n";
 
-    for (const auto& fn : program.functions) {
+    for (const auto &fn : program.functions) {
         generateFunction(*fn);
         out_ << "\n";
     }
@@ -49,28 +32,37 @@ void CodeGenerator::popScope() {
     }
 }
 
-int CodeGenerator::declareLocal(const std::string &name) {
+LocalInfo CodeGenerator::declareLocal(const std::string &name, const ast::Type &type) {
     if (localScopes_.empty()) {
         error("internal codegen error: no active scope for local '" + name + "'");
     }
 
-    auto& scope = localScopes_.back();
+    auto &scope = localScopes_.back();
     if (scope.count(name)) {
         error("internal codegen error: duplicate local in current scope '" + name + "'");
     }
 
+    int slotCount = 1;
+    if (type.isArray()) {
+        if (*type.elementType != ast::Type::i32()) {
+            error("only i32 arrays are supported in codegen");
+        }
+        slotCount = static_cast<int>(type.arrayLength);
+    }
+
     int offset = nextLocalOffset_;
-    nextLocalOffset_ += LOCAL_SLOT_SIZE;
+    nextLocalOffset_ += slotCount * LOCAL_SLOT_SIZE;
 
     if (nextLocalOffset_ >= TEMP_BASE_OFFSET) {
         error("stack frame exhausted; increase FRAME_SIZE/TEMP_BASE_OFFSET");
     }
 
-    scope[name] = offset;
-    return offset;
+    LocalInfo info{offset, type};
+    scope[name] = info;
+    return info;
 }
 
-int CodeGenerator::lookupLocal(const std::string &name) const {
+LocalInfo CodeGenerator::lookupLocal(const std::string &name) const {
     for (auto it = localScopes_.rbegin(); it != localScopes_.rend(); ++it) {
         auto found = it->find(name);
         if (found != it->end()) {
@@ -89,11 +81,23 @@ std::string CodeGenerator::makeLabel(const std::string &prefix) {
     return ".L" + prefix + "_" + std::to_string(labelCounter_++);
 }
 
+void CodeGenerator::generateArrayBoundsCheck(const LocalInfo &arrayInfo) {
+    if (!arrayInfo.type.isArray()) {
+        error("internal codegen error: bounds check on non-array");
+    }
+
+    out_ << "    cmp w0, #0\n";
+    out_ << "    blt " << currentBoundsTrapLabel_ << "\n";
+    out_ << "    cmp w0, #" << arrayInfo.type.arrayLength << "\n";
+    out_ << "    bge " << currentBoundsTrapLabel_ << "\n";
+}
+
 void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
     localScopes_.clear();
     nextLocalOffset_ = 16;
     tempDepth_ = 0;
     currentReturnLabel_ = makeLabel("return");
+    currentBoundsTrapLabel_ = makeLabel("bounds_trap");
 
     out_ << ".global " << fn.name << "\n";
     out_ << ".align 2\n";
@@ -111,13 +115,16 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
     }
 
     for (std::size_t i = 0; i < fn.params.size(); ++i) {
-        int offset = declareLocal(fn.params[i].name);
-        out_ << "    str w" << i << ", [x28, #" << offset << "]\n";
+        LocalInfo info = declareLocal(fn.params[i].name, fn.params[i].type);
+        out_ << "    str w" << i << ", [x28, #" << info.offset << "]\n";
     }
 
     generateBlock(*fn.body);
 
     popScope();
+
+    out_ << currentBoundsTrapLabel_ << ":\n";
+    out_ << "    bl abort\n";
 
     out_ << currentReturnLabel_ << ":\n";
     out_ << "    add sp, sp, #" << FRAME_SIZE << "\n";
@@ -128,7 +135,7 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
 void CodeGenerator::generateBlock(const ast::BlockStmt &block) {
     pushScope();
 
-    for (const auto& stmt : block.statements) {
+    for (const auto &stmt : block.statements) {
         generateStmt(*stmt);
     }
 
@@ -136,32 +143,70 @@ void CodeGenerator::generateBlock(const ast::BlockStmt &block) {
 }
 
 void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
-    if (const auto* letStmt = dynamic_cast<const ast::LetStmt*>(&stmt)) {
-        int offset = declareLocal(letStmt->name);
+    if (const auto *letStmt = dynamic_cast<const ast::LetStmt*>(&stmt)) {
+        LocalInfo info = declareLocal(letStmt->name, letStmt->type);
+
+        if (letStmt->type.isArray()) {
+            const auto *arrayLiteral = dynamic_cast<const ast::ArrayLiteralExpr*>(letStmt->initializer.get());
+            if (!arrayLiteral) {
+                error("array local must be initialized with an array literal");
+            }
+
+            for (std::size_t i = 0; i < arrayLiteral->elements.size(); ++i) {
+                generateExpr(*arrayLiteral->elements[i]);
+                out_ << "    str w0, [x28, #" << (info.offset + static_cast<int>(i) * LOCAL_SLOT_SIZE) << "]\n";
+            }
+            return;
+        }
+
         generateExpr(*letStmt->initializer);
-        out_ << "    str w0, [x28, #" << offset << "]\n";
+        out_ << "    str w0, [x28, #" << info.offset << "]\n";
         return;
     }
 
-    if (const auto* assignStmt = dynamic_cast<const ast::AssignStmt*>(&stmt)) {
-        int offset = lookupLocal(assignStmt->name);
+    if (const auto *assignStmt = dynamic_cast<const ast::AssignStmt*>(&stmt)) {
+        LocalInfo info = lookupLocal(assignStmt->name);
         generateExpr(*assignStmt->value);
-        out_ << "    str w0, [x28, #" << offset << "]\n";
+        out_ << "    str w0, [x28, #" << info.offset << "]\n";
         return;
     }
 
-    if (const auto* exprStmt = dynamic_cast<const ast::ExprStmt*>(&stmt)) {
+    if (const auto *indexAssignStmt = dynamic_cast<const ast::IndexAssignStmt*>(&stmt)) {
+        LocalInfo arrayInfo = lookupLocal(indexAssignStmt->arrayName);
+        if (!arrayInfo.type.isArray()) {
+            error("internal codegen error: indexed assignment on non-array");
+        }
+
+        int indexTemp = currentTempOffset();
+        generateExpr(*indexAssignStmt->index);
+        generateArrayBoundsCheck(arrayInfo);
+        out_ << "    str w0, [x28, #" << indexTemp << "]\n";
+        tempDepth_++;
+
+        generateExpr(*indexAssignStmt->value);
+
+        tempDepth_--;
+        out_ << "    ldr w1, [x28, #" << indexTemp << "]\n";
+        out_ << "    mov w2, #" << LOCAL_SLOT_SIZE << "\n";
+        out_ << "    mul w1, w1, w2\n";
+        out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
+        out_ << "    add x1, x1, w1, sxtw\n";
+        out_ << "    str w0, [x1]\n";
+        return;
+    }
+
+    if (const auto *exprStmt = dynamic_cast<const ast::ExprStmt*>(&stmt)) {
         generateExpr(*exprStmt->expr);
         return;
     }
 
-    if (const auto* returnStmt = dynamic_cast<const ast::ReturnStmt*>(&stmt)) {
+    if (const auto *returnStmt = dynamic_cast<const ast::ReturnStmt*>(&stmt)) {
         generateExpr(*returnStmt->value);
         out_ << "    b " << currentReturnLabel_ << "\n";
         return;
     }
 
-    if (const auto* ifStmt = dynamic_cast<const ast::IfStmt*>(&stmt)) {
+    if (const auto *ifStmt = dynamic_cast<const ast::IfStmt*>(&stmt)) {
         std::string elseLabel = makeLabel("if_else");
         std::string endLabel = makeLabel("if_end");
 
@@ -183,7 +228,7 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
         return;
     }
 
-    if (const auto* whileStmt = dynamic_cast<const ast::WhileStmt*>(&stmt)) {
+    if (const auto *whileStmt = dynamic_cast<const ast::WhileStmt*>(&stmt)) {
         std::string condLabel = makeLabel("while_cond");
         std::string endLabel = makeLabel("while_end");
 
@@ -197,7 +242,7 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
         return;
     }
 
-    if (const auto* blockStmt = dynamic_cast<const ast::BlockStmt*>(&stmt)) {
+    if (const auto *blockStmt = dynamic_cast<const ast::BlockStmt*>(&stmt)) {
         generateBlock(*blockStmt);
         return;
     }
@@ -205,26 +250,51 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
     error("unsupported statement in codegen");
 }
 
-void CodeGenerator::generateExpr(const ast::Expr& expr) {
-    if (const auto* intExpr = dynamic_cast<const ast::IntegerExpr*>(&expr)) {
+void CodeGenerator::generateExpr(const ast::Expr &expr) {
+    if (const auto *intExpr = dynamic_cast<const ast::IntegerExpr*>(&expr)) {
         out_ << "    mov w0, #" << intExpr->value << "\n";
         return;
     }
 
-    if (const auto* varExpr = dynamic_cast<const ast::VariableExpr*>(&expr)) {
-        int offset = lookupLocal(varExpr->name);
-        out_ << "    ldr w0, [x28, #" << offset << "]\n";
+    if (const auto *varExpr = dynamic_cast<const ast::VariableExpr*>(&expr)) {
+        LocalInfo info = lookupLocal(varExpr->name);
+        out_ << "    ldr w0, [x28, #" << info.offset << "]\n";
         return;
     }
 
-    if (const auto* boolExpr = dynamic_cast<const ast::BoolExpr*>(&expr)) {
+    if (const auto *boolExpr = dynamic_cast<const ast::BoolExpr*>(&expr)) {
         out_ << "    mov w0, #" << (boolExpr->value ? 1 : 0) << "\n";
         return;
     }
 
+    if (const auto *indexExpr = dynamic_cast<const ast::IndexExpr*>(&expr)) {
+        const auto *baseVar = dynamic_cast<const ast::VariableExpr*>(indexExpr->base.get());
+        if (!baseVar) {
+            error("only variable-based array indexing is supported in codegen");
+        }
 
-    if (const auto* unaryExpr = dynamic_cast<const ast::UnaryExpr*>(&expr)) {
+        LocalInfo arrayInfo = lookupLocal(baseVar->name);
+        if (!arrayInfo.type.isArray()) {
+            error("internal codegen error: indexing non-array");
+        }
+
+        generateExpr(*indexExpr->index);
+        generateArrayBoundsCheck(arrayInfo);
+        out_ << "    mov w1, #" << LOCAL_SLOT_SIZE << "\n";
+        out_ << "    mul w0, w0, w1\n";
+        out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
+        out_ << "    add x1, x1, w0, sxtw\n";
+        out_ << "    ldr w0, [x1]\n";
+        return;
+    }
+
+    if (const auto *unaryExpr = dynamic_cast<const ast::UnaryExpr*>(&expr)) {
         generateExpr(*unaryExpr->operand);
+
+        if (unaryExpr->op == "-") {
+            out_ << "    neg w0, w0\n";
+            return;
+        }
 
         if (unaryExpr->op == "!") {
             out_ << "    cmp w0, #0\n";
@@ -235,7 +305,7 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
         error("unsupported unary operator '" + unaryExpr->op + "'");
     }
 
-    if (const auto* binaryExpr = dynamic_cast<const ast::BinaryExpr*>(&expr)) {
+    if (const auto *binaryExpr = dynamic_cast<const ast::BinaryExpr*>(&expr)) {
         int tempOffset = currentTempOffset();
 
         generateExpr(*binaryExpr->left);
@@ -247,7 +317,7 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
         tempDepth_--;
         out_ << "    ldr w1, [x28, #" << tempOffset << "]\n";
 
-        const std::string& op = binaryExpr->op;
+        const std::string &op = binaryExpr->op;
 
         if (op == "+") {
             out_ << "    add w0, w1, w0\n";
@@ -314,7 +384,7 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
         error("unsupported binary operator '" + op + "'");
     }
 
-    if (const auto* callExpr = dynamic_cast<const ast::CallExpr*>(&expr)) {
+    if (const auto *callExpr = dynamic_cast<const ast::CallExpr*>(&expr)) {
         if (callExpr->callee == "print") {
             if (callExpr->arguments.size() != 1) {
                 error("print expects exactly 1 argument");
@@ -338,7 +408,7 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
 
         int savedTempDepth = tempDepth_;
 
-        for (const auto& arg : callExpr->arguments) {
+        for (const auto &arg : callExpr->arguments) {
             int argOffset = currentTempOffset();
             generateExpr(*arg);
             out_ << "    str w0, [x28, #" << argOffset << "]\n";
@@ -358,6 +428,6 @@ void CodeGenerator::generateExpr(const ast::Expr& expr) {
     error("unsupported expression in codegen");
 }
 
-[[noreturn]] void CodeGenerator::error(const std::string& message) const {
+[[noreturn]] void CodeGenerator::error(const std::string &message) const {
     throw std::runtime_error("codegen error: " + message);
 }
