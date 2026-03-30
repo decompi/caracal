@@ -101,19 +101,33 @@ std::vector<ast::ExprPtr> Parser::parseArgumentList() {
 ast::ExprPtr Parser::parsePostfix() {
     auto expr = parsePrimary();
 
-    while(check(TokenKind::LParen)) {
-        advance(); // so it consumes '('
+    while (true) {
+        if (check(TokenKind::LParen)) {
+            advance();
 
-        auto args = parseArgumentList();
-        consume(TokenKind::RParen, "expected ')' after argument list");
+            auto args = parseArgumentList();
+            consume(TokenKind::RParen, "expected ')' after argument list");
 
-        auto *varExpr = dynamic_cast<ast::VariableExpr*>(expr.get());
-        if(!varExpr) {
-            errorHere("can only call a function by identifier");
+            auto *varExpr = dynamic_cast<ast::VariableExpr*>(expr.get());
+            if (!varExpr) {
+                errorHere("can only call a function by identifier");
+            }
+
+            std::string callee = varExpr->name;
+            expr = std::make_unique<ast::CallExpr>(callee, std::move(args));
+            continue;
         }
 
-        std::string callee = varExpr->name;
-        expr = std::make_unique<ast::CallExpr>(callee, std::move(args));
+        if (check(TokenKind::LBracket)) {
+            advance();
+            auto index = parseExpression();
+            consume(TokenKind::RBracket, "expected ']' after index expression");
+
+            expr = std::make_unique<ast::IndexExpr>(std::move(expr), std::move(index));
+            continue;
+        }
+
+        break;
     }
 
     return expr;
@@ -192,17 +206,35 @@ ast::StmtPtr Parser::parseStatement() {
 }
 
 ast::StmtPtr Parser::parseAssignmentOrExprStmt() {
-    if(check(TokenKind::Identifier) && current_ + 1 < tokens_.size() && tokens_[current_ + 1].kind == TokenKind::Equal) {
-        const Token &nameTok = advance();
-        std::string name = nameTok.lexeme;
+    if (check(TokenKind::Identifier) && current_ + 1 < tokens_.size()) {
+        if (tokens_[current_ + 1].kind == TokenKind::Equal) {
+            const Token &nameTok = advance();
+            std::string name = nameTok.lexeme;
 
-        consume(TokenKind::Equal, "expected '=' in assignment");
+            consume(TokenKind::Equal, "expected '=' in assignment");
+            auto value = parseExpression();
+            consume(TokenKind::Semicolon, "expected ';' after assignment");
 
-        auto value = parseExpression();
+            return std::make_unique<ast::AssignStmt>(name, std::move(value));
+        }
 
-        consume(TokenKind::Semicolon, "expected ';' after assignment");
+        if (tokens_[current_ + 1].kind == TokenKind::LBracket) {
+            const Token &nameTok = advance();
+            std::string name = nameTok.lexeme;
 
-        return std::make_unique<ast::AssignStmt>(name, std::move(value));
+            consume(TokenKind::LBracket, "expected '[' after array name");
+            auto index = parseExpression();
+            consume(TokenKind::RBracket, "expected ']' after array index");
+            consume(TokenKind::Equal, "expected '=' in indexed assignment");
+            auto value = parseExpression();
+            consume(TokenKind::Semicolon, "expected ';' after assignment");
+
+            return std::make_unique<ast::IndexAssignStmt>(
+                name,
+                std::move(index),
+                std::move(value)
+            );
+        }
     }
 
     auto expr = parseExpression();
@@ -341,42 +373,74 @@ ast::ExprPtr Parser::parseUnary() {
 }
 
 ast::ExprPtr Parser::parsePrimary() {
-    if(check(TokenKind::Integer)) {
+    if (check(TokenKind::Integer)) {
         const Token &tok = advance();
         int value = std::stoi(tok.lexeme);
-        
+
         return std::make_unique<ast::IntegerExpr>(value);
     }
 
-    if(check(TokenKind::Identifier)) {
-        const Token &tok = advance();
+    if (match(TokenKind::True)) {
+        return std::make_unique<ast::BoolExpr>(true);
+    }
 
+    if (match(TokenKind::False)) {
+        return std::make_unique<ast::BoolExpr>(false);
+    }
+
+    if (check(TokenKind::Identifier)) {
+        const Token &tok = advance();
         return std::make_unique<ast::VariableExpr>(tok.lexeme);
     }
 
-    if(check(TokenKind::LParen)) {
+    if (check(TokenKind::LParen)) {
         advance();
         auto expr = parseExpression();
         consume(TokenKind::RParen, "expected ')' after expression");
         return expr;
     }
 
-    if(match(TokenKind::True)) {
-        return std::make_unique<ast::BoolExpr>(true);
-    }
-    if(match(TokenKind::False)) {
-        return std::make_unique<ast::BoolExpr>(false);
+    if (check(TokenKind::LBracket)) {
+        return parseArrayLiteral();
     }
 
     errorHere("expected an expression");
 }
 
+ast::ExprPtr Parser::parseArrayLiteral() {
+    consume(TokenKind::LBracket, "expected '[' to start array literal");
+
+    std::vector<ast::ExprPtr> elements;
+
+    if (!check(TokenKind::RBracket)) {
+        do {
+            elements.push_back(parseExpression());
+        } while (match(TokenKind::Comma));
+    }
+
+    consume(TokenKind::RBracket, "expected ']' to end array literal");
+
+    return std::make_unique<ast::ArrayLiteralExpr>(std::move(elements));
+}
+
 ast::Type Parser::parseType() {
-    if(match(TokenKind::I32)) {
+    if (match(TokenKind::I32)) {
         return ast::Type::i32();
     }
-    if(match(TokenKind::Bool)) {
+
+    if (match(TokenKind::Bool)) {
         return ast::Type::boolean();
+    }
+
+    if (match(TokenKind::LBracket)) {
+        ast::Type elementType = parseType();
+        consume(TokenKind::Semicolon, "expected ';' in array type");
+
+        const Token &lengthTok = consume(TokenKind::Integer, "expected array length");
+        std::size_t length = static_cast<std::size_t>(std::stoul(lengthTok.lexeme));
+
+        consume(TokenKind::RBracket, "expected ']' after array type");
+        return ast::Type::array(elementType, length);
     }
 
     errorHere("expected type");

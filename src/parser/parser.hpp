@@ -47,6 +47,7 @@ private:
     ast::ExprPtr parseUnary();
     ast::ExprPtr parsePostfix();
     ast::ExprPtr parsePrimary();
+    ast::ExprPtr parseArrayLiteral();
 
     ast::Type parseType();
 
