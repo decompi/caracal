@@ -26,12 +26,39 @@ void SemaAnalyzer::collectFunctions(const ast::Program &program) {
             error("duplicate function declaration '" + fn->name + "'");
         }
 
+        validateSupportedFunctionSignature(*fn);
+
         FunctionSymbol symbol;
         for (const auto &param : fn->params) {
             symbol.paramTypes.push_back(param.type);
         }
         symbol.returnType = fn->returnType;
         functions_[fn->name] = symbol;
+    }
+}
+
+void SemaAnalyzer::validateSupportedFunctionSignature(const ast::FunctionDecl &fn) const {
+    for (const auto &param : fn.params) {
+        if(param.type.isArray()) {
+            error("array parameters are not supported yet");
+        }
+    }
+
+    if(fn.returnType.isArray()) {
+        error("array return types are not supported yet");
+    }
+}
+
+void SemaAnalyzer::validateMainSignature() const {
+    auto it = functions_.find("main");
+    if (it == functions_.end()) {
+        error("missing required function 'main'");
+    }
+    if (!it->second.paramTypes.empty()) {
+        error("main must not take parameters");
+    }
+    if (it->second.returnType != ast::Type::i32()) {
+        error("main must return i32");
     }
 }
 
@@ -53,7 +80,7 @@ void SemaAnalyzer::analyzeFunction(const ast::FunctionDecl &fn) {
 void SemaAnalyzer::analyzeBlock(const ast::BlockStmt &block) {
     pushScope();
 
-    for(const auto & stmt: block.statements) {
+    for (const auto &stmt : block.statements) {
         analyzeStmt(*stmt);
     }
 
@@ -84,6 +111,31 @@ void SemaAnalyzer::analyzeStmt(const ast::Stmt &stmt) {
                 "cannot assign value of type " + ast::toString(valueType) +
                 " to variable '" + assignStmt->name + "' of type " +
                 ast::toString(variableType)
+            );
+        }
+        return;
+    }
+
+    if (const auto *indexAssignStmt = dynamic_cast<const ast::IndexAssignStmt*>(&stmt)) {
+        ast::Type arrayType = lookupVariable(indexAssignStmt->arrayName);
+        if (!arrayType.isArray()) {
+            error("cannot index non-array variable '" + indexAssignStmt->arrayName + "'");
+        }
+
+        if (*arrayType.elementType != ast::Type::i32()) {
+            error("only i32 arrays are supported yet");
+        }
+
+        ast::Type indexType = analyzeExpr(*indexAssignStmt->index);
+        if (indexType != ast::Type::i32()) {
+            error("array index must have type i32");
+        }
+
+        ast::Type valueType = analyzeExpr(*indexAssignStmt->value);
+        if (valueType != *arrayType.elementType) {
+            error(
+                "cannot assign value of type " + ast::toString(valueType) +
+                " to array element of type " + ast::toString(*arrayType.elementType)
             );
         }
         return;
@@ -138,7 +190,6 @@ void SemaAnalyzer::analyzeStmt(const ast::Stmt &stmt) {
     error("unknown statement in semantic analysis");
 }
 
-
 ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
     if (dynamic_cast<const ast::IntegerExpr*>(&expr)) {
         return ast::Type::i32();
@@ -150,6 +201,40 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
 
     if (const auto *varExpr = dynamic_cast<const ast::VariableExpr*>(&expr)) {
         return lookupVariable(varExpr->name);
+    }
+
+    if (const auto *arrayLiteralExpr = dynamic_cast<const ast::ArrayLiteralExpr*>(&expr)) {
+        if (arrayLiteralExpr->elements.empty()) {
+            error("array literals must contain at least one element");
+        }
+
+        ast::Type firstType = analyzeExpr(*arrayLiteralExpr->elements[0]);
+        if (firstType != ast::Type::i32()) {
+            error("only i32 array literals are supported yet");
+        }
+
+        for (std::size_t i = 1; i < arrayLiteralExpr->elements.size(); ++i) {
+            ast::Type elementType = analyzeExpr(*arrayLiteralExpr->elements[i]);
+            if (elementType != firstType) {
+                error("array literal elements must all have the same type");
+            }
+        }
+
+        return ast::Type::array(firstType, arrayLiteralExpr->elements.size());
+    }
+
+    if (const auto *indexExpr = dynamic_cast<const ast::IndexExpr*>(&expr)) {
+        ast::Type baseType = analyzeExpr(*indexExpr->base);
+        if (!baseType.isArray()) {
+            error("cannot index a non-array expression");
+        }
+
+        ast::Type indexType = analyzeExpr(*indexExpr->index);
+        if (indexType != ast::Type::i32()) {
+            error("array index must have type i32");
+        }
+
+        return *baseType.elementType;
     }
 
     if (const auto *unaryExpr = dynamic_cast<const ast::UnaryExpr*>(&expr)) {
@@ -241,28 +326,24 @@ void SemaAnalyzer::pushScope() {
 }
 
 void SemaAnalyzer::popScope() {
-    if(!scopes_.empty()) {
+    if (!scopes_.empty()) {
         scopes_.pop_back();
     }
 }
 
 void SemaAnalyzer::declareVariable(const std::string &name, ast::Type type) {
+    if (scopes_.empty()) {
+        error("internal sema error: no active scope for declaration '" + name + "'");
+    }
+
     auto &scope = scopes_.back();
     if (scope.count(name)) {
         error("duplicate variable declaration '" + name + "'");
     }
+
     scope[name] = type;
 }
 
-/*bool SemaAnalyzer::isVariableDeclared(const std::string &name) const {
-    for(auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
-        if(it->count(name)) {
-            return true;
-        }
-    }
-
-    return false;
-}*/
 ast::Type SemaAnalyzer::lookupVariable(const std::string &name) const {
     for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
         auto found = it->find(name);
@@ -276,17 +357,4 @@ ast::Type SemaAnalyzer::lookupVariable(const std::string &name) const {
 
 [[noreturn]] void SemaAnalyzer::error(const std::string &message) const {
     throw std::runtime_error("semantic error: " + message);
-}
-
-void SemaAnalyzer::validateMainSignature() const {
-    auto it = functions_.find("main");
-    if (it == functions_.end()) {
-        error("missing required function 'main'");
-    }
-    if (!it->second.paramTypes.empty()) {
-        error("main must not take parameters");
-    }
-    if (it->second.returnType != ast::Type::i32()) {
-        error("main must return i32");
-    }
 }

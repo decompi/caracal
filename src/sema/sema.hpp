@@ -31,6 +31,7 @@ private:
     void declareVariable(const std::string &name, ast::Type type);
     ast::Type lookupVariable(const std::string &name) const;
     void validateMainSignature() const;
+    void validateSupportedFunctionSignature(const ast::FunctionDecl &fn) const;
 
     [[noreturn]] void error(const std::string &message) const;
 };
