@@ -16,8 +16,10 @@ void CodeGenerator::generate(const ast::Program &program) {
     collectFunctionSignatures(program);
 
     out_ << ".section .rodata\n";
-    out_ << ".Lprint_fmt:\n";
+    out_ << ".Lprint_i32_fmt:\n";
     out_ << "    .asciz \"%d\\n\"\n\n";
+    out_ << ".Lprint_f64_fmt:\n";
+    out_ << "    .asciz \"%f\\n\"\n\n";
 
     out_ << ".text\n";
     out_ << ".extern printf\n";
@@ -603,13 +605,27 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
                 error("print expects exactly 1 argument");
             }
 
+            ast::Type argType = inferExprType(*callExpr->arguments[0]);
             generateExpr(*callExpr->arguments[0]);
-            out_ << "    mov w1, w0\n";
-            out_ << "    adrp x0, .Lprint_fmt\n";
-            out_ << "    add x0, x0, :lo12:.Lprint_fmt\n";
-            out_ << "    bl printf\n";
-            out_ << "    mov w0, #0\n";
-            return;
+
+            if (argType == ast::Type::i32()) {
+                out_ << "    mov w1, w0\n";
+                out_ << "    adrp x0, .Lprint_i32_fmt\n";
+                out_ << "    add x0, x0, :lo12:.Lprint_i32_fmt\n";
+                out_ << "    bl printf\n";
+                out_ << "    mov w0, #0\n";
+                return;
+            }
+
+            if (argType == ast::Type::f64()) {
+                out_ << "    adrp x0, .Lprint_f64_fmt\n";
+                out_ << "    add x0, x0, :lo12:.Lprint_f64_fmt\n";
+                out_ << "    bl printf\n";
+                out_ << "    mov w0, #0\n";
+                return;
+            }
+
+            error("print only supports i32 and f64 in codegen");
         }
 
         auto it = functionParamTypes_.find(callExpr->callee);

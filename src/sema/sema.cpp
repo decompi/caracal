@@ -311,6 +311,19 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
     }
 
     if (const auto *callExpr = dynamic_cast<const ast::CallExpr*>(&expr)) {
+        if (callExpr->callee == "print") {
+            if (callExpr->arguments.size() != 1) {
+                error("print expects exactly 1 argument");
+            }
+
+            ast::Type argType = analyzeExpr(*callExpr->arguments[0]);
+            if (argType != ast::Type::i32() && argType != ast::Type::f64()) {
+                error("print expects an i32 or f64 argument");
+            }
+
+            return ast::Type::voidType();
+        }
+
         auto it = functions_.find(callExpr->callee);
         if (it == functions_.end()) {
             error("call to undeclared function '" + callExpr->callee + "'");
