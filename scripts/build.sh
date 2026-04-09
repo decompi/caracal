@@ -11,4 +11,5 @@ clang++ -std=c++20 -O2 -Wall -Wextra -pedantic \
   src/ast/ast_printer.cpp \
   src/sema/sema.cpp \
   src/codegen/codegen.cpp \
+  src/opt/constant_folder.cpp \
   -o build/caracal

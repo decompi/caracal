@@ -8,6 +8,7 @@
 #include "codegen/codegen.hpp"
 #include "common/token.hpp"
 #include "lexer/lexer.hpp"
+#include "opt/constant_folder.hpp"
 #include "parser/parser.hpp"
 #include "sema/sema.hpp"
 
@@ -19,7 +20,8 @@ namespace {
             << "  -o <file>   write assembly output to <file>\n"
             << "  --tokens    print tokens and stop\n"
             << "  --ast       print AST and stop\n"
-            << "  --check     run lexer/parser/sema only and stop\n";
+            << "  --check     run lexer/parser/sema only and stop\n"
+            << "  --opt       run AST optimization pass before codegen/check\n";
     }
 }
 
@@ -34,6 +36,7 @@ int main(int argc, char** argv) {
     bool printTokens = false;
     bool printAst = false;
     bool checkOnly = false;
+    bool enableOpt = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -59,6 +62,11 @@ int main(int argc, char** argv) {
 
         if (arg == "--check") {
             checkOnly = true;
+            continue;
+        }
+
+        if (arg == "--opt") {
+            enableOpt = true;
             continue;
         }
 
@@ -136,6 +144,11 @@ int main(int argc, char** argv) {
 
         SemaAnalyzer sema;
         sema.analyze(program);
+
+        if (enableOpt) {
+            ConstantFolder folder;
+            folder.run(program);
+        }
 
         if (checkOnly) {
             std::cout << "semantic analysis succeeded\n";
