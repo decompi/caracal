@@ -1,5 +1,6 @@
 #include "codegen.hpp"
 
+#include <iomanip>
 #include <stdexcept>
 #include <vector>
 
@@ -8,6 +9,12 @@ CodeGenerator::CodeGenerator(std::ostream &out)
 }
 
 void CodeGenerator::generate(const ast::Program &program) {
+    functionReturnTypes_.clear();
+    functionParamTypes_.clear();
+    floatConstants_.clear();
+
+    collectFunctionSignatures(program);
+
     out_ << ".section .rodata\n";
     out_ << ".Lprint_fmt:\n";
     out_ << "    .asciz \"%d\\n\"\n\n";
@@ -19,6 +26,31 @@ void CodeGenerator::generate(const ast::Program &program) {
     for (const auto &fn : program.functions) {
         generateFunction(*fn);
         out_ << "\n";
+    }
+
+    if (!floatConstants_.empty()) {
+        out_ << ".section .rodata\n";
+        out_ << ".align 3\n";
+
+        for (const auto &entry : floatConstants_) {
+            out_ << entry.first << ":\n";
+            out_ << "    .double " << std::setprecision(17) << entry.second << "\n";
+        }
+    }
+}
+
+void CodeGenerator::collectFunctionSignatures(const ast::Program &program) {
+    functionParamTypes_["print"] = {ast::Type::i32()};
+    functionReturnTypes_["print"] = ast::Type::voidType();
+
+    for (const auto &fn : program.functions) {
+        std::vector<ast::Type> paramTypes;
+        for (const auto &param : fn->params) {
+            paramTypes.push_back(param.type);
+        }
+
+        functionParamTypes_[fn->name] = std::move(paramTypes);
+        functionReturnTypes_[fn->name] = fn->returnType;
     }
 }
 
@@ -73,12 +105,87 @@ LocalInfo CodeGenerator::lookupLocal(const std::string &name) const {
     error("unknown local variable '" + name + "'");
 }
 
+ast::Type CodeGenerator::inferExprType(const ast::Expr &expr) const {
+    if (dynamic_cast<const ast::IntegerExpr*>(&expr)) {
+        return ast::Type::i32();
+    }
+
+    if (dynamic_cast<const ast::FloatExpr*>(&expr)) {
+        return ast::Type::f64();
+    }
+
+    if (dynamic_cast<const ast::BoolExpr*>(&expr)) {
+        return ast::Type::boolean();
+    }
+
+    if (const auto *varExpr = dynamic_cast<const ast::VariableExpr*>(&expr)) {
+        return lookupLocal(varExpr->name).type;
+    }
+
+    if (const auto *arrayLiteralExpr = dynamic_cast<const ast::ArrayLiteralExpr*>(&expr)) {
+        return ast::Type::array(ast::Type::i32(), arrayLiteralExpr->elements.size());
+    }
+
+    if (const auto *indexExpr = dynamic_cast<const ast::IndexExpr*>(&expr)) {
+        ast::Type baseType = inferExprType(*indexExpr->base);
+        if (!baseType.isArray()) {
+            error("internal codegen error: indexing non-array expression");
+        }
+        return *baseType.elementType;
+    }
+
+    if (const auto *unaryExpr = dynamic_cast<const ast::UnaryExpr*>(&expr)) {
+        ast::Type operandType = inferExprType(*unaryExpr->operand);
+
+        if (unaryExpr->op == "-") {
+            return operandType;
+        }
+
+        if (unaryExpr->op == "!") {
+            return ast::Type::boolean();
+        }
+
+        error("internal codegen error: unknown unary operator '" + unaryExpr->op + "'");
+    }
+
+    if (const auto *binaryExpr = dynamic_cast<const ast::BinaryExpr*>(&expr)) {
+        ast::Type leftType = inferExprType(*binaryExpr->left);
+        const std::string &op = binaryExpr->op;
+
+        if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
+            return leftType;
+        }
+
+        if (op == "<" || op == "<=" || op == ">" || op == ">=" || op == "==" || op == "!=") {
+            return ast::Type::boolean();
+        }
+
+        error("internal codegen error: unknown binary operator '" + op + "'");
+    }
+
+    if (const auto *callExpr = dynamic_cast<const ast::CallExpr*>(&expr)) {
+        auto it = functionReturnTypes_.find(callExpr->callee);
+        if (it == functionReturnTypes_.end()) {
+            error("internal codegen error: unknown function '" + callExpr->callee + "'");
+        }
+        return it->second;
+    }
+
+    error("internal codegen error: unsupported expression type inference");
+}
+
 int CodeGenerator::currentTempOffset() const {
     return TEMP_BASE_OFFSET + tempDepth_ * LOCAL_SLOT_SIZE;
 }
 
 std::string CodeGenerator::makeLabel(const std::string &prefix) {
     return ".L" + prefix + "_" + std::to_string(labelCounter_++);
+}
+
+std::string CodeGenerator::registerFloatConstant(double value) {
+    std::string label = makeLabel("f64_const");
+    floatConstants_.push_back({label, value});
+    return label;
 }
 
 void CodeGenerator::generateArrayBoundsCheck(const LocalInfo &arrayInfo) {
@@ -115,8 +222,16 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
     }
 
     for (std::size_t i = 0; i < fn.params.size(); ++i) {
+        if (fn.params[i].type.isArray()) {
+            error("array parameters are not supported in codegen");
+        }
+
         LocalInfo info = declareLocal(fn.params[i].name, fn.params[i].type);
-        out_ << "    str w" << i << ", [x28, #" << info.offset << "]\n";
+        if (fn.params[i].type == ast::Type::f64()) {
+            out_ << "    str d" << i << ", [x28, #" << info.offset << "]\n";
+        } else {
+            out_ << "    str w" << i << ", [x28, #" << info.offset << "]\n";
+        }
     }
 
     generateBlock(*fn.body);
@@ -160,14 +275,23 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
         }
 
         generateExpr(*letStmt->initializer);
-        out_ << "    str w0, [x28, #" << info.offset << "]\n";
+        if (letStmt->type == ast::Type::f64()) {
+            out_ << "    str d0, [x28, #" << info.offset << "]\n";
+        } else {
+            out_ << "    str w0, [x28, #" << info.offset << "]\n";
+        }
         return;
     }
 
     if (const auto *assignStmt = dynamic_cast<const ast::AssignStmt*>(&stmt)) {
         LocalInfo info = lookupLocal(assignStmt->name);
         generateExpr(*assignStmt->value);
-        out_ << "    str w0, [x28, #" << info.offset << "]\n";
+
+        if (info.type == ast::Type::f64()) {
+            out_ << "    str d0, [x28, #" << info.offset << "]\n";
+        } else {
+            out_ << "    str w0, [x28, #" << info.offset << "]\n";
+        }
         return;
     }
 
@@ -256,9 +380,21 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
         return;
     }
 
+    if (const auto *floatExpr = dynamic_cast<const ast::FloatExpr*>(&expr)) {
+        std::string label = registerFloatConstant(floatExpr->value);
+        out_ << "    adrp x9, " << label << "\n";
+        out_ << "    add x9, x9, :lo12:" << label << "\n";
+        out_ << "    ldr d0, [x9]\n";
+        return;
+    }
+
     if (const auto *varExpr = dynamic_cast<const ast::VariableExpr*>(&expr)) {
         LocalInfo info = lookupLocal(varExpr->name);
-        out_ << "    ldr w0, [x28, #" << info.offset << "]\n";
+        if (info.type == ast::Type::f64()) {
+            out_ << "    ldr d0, [x28, #" << info.offset << "]\n";
+        } else {
+            out_ << "    ldr w0, [x28, #" << info.offset << "]\n";
+        }
         return;
     }
 
@@ -289,10 +425,15 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
     }
 
     if (const auto *unaryExpr = dynamic_cast<const ast::UnaryExpr*>(&expr)) {
+        ast::Type operandType = inferExprType(*unaryExpr->operand);
         generateExpr(*unaryExpr->operand);
 
         if (unaryExpr->op == "-") {
-            out_ << "    neg w0, w0\n";
+            if (operandType == ast::Type::f64()) {
+                out_ << "    fneg d0, d0\n";
+            } else {
+                out_ << "    neg w0, w0\n";
+            }
             return;
         }
 
@@ -306,7 +447,79 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
     }
 
     if (const auto *binaryExpr = dynamic_cast<const ast::BinaryExpr*>(&expr)) {
+        ast::Type leftType = inferExprType(*binaryExpr->left);
         int tempOffset = currentTempOffset();
+
+        if (leftType == ast::Type::f64()) {
+            generateExpr(*binaryExpr->left);
+            out_ << "    str d0, [x28, #" << tempOffset << "]\n";
+            tempDepth_++;
+
+            generateExpr(*binaryExpr->right);
+
+            tempDepth_--;
+            out_ << "    ldr d1, [x28, #" << tempOffset << "]\n";
+
+            const std::string &op = binaryExpr->op;
+
+            if (op == "+") {
+                out_ << "    fadd d0, d1, d0\n";
+                return;
+            }
+
+            if (op == "-") {
+                out_ << "    fsub d0, d1, d0\n";
+                return;
+            }
+
+            if (op == "*") {
+                out_ << "    fmul d0, d1, d0\n";
+                return;
+            }
+
+            if (op == "/") {
+                out_ << "    fdiv d0, d1, d0\n";
+                return;
+            }
+
+            if (op == "==") {
+                out_ << "    fcmp d1, d0\n";
+                out_ << "    cset w0, eq\n";
+                return;
+            }
+
+            if (op == "!=") {
+                out_ << "    fcmp d1, d0\n";
+                out_ << "    cset w0, ne\n";
+                return;
+            }
+
+            if (op == "<") {
+                out_ << "    fcmp d1, d0\n";
+                out_ << "    cset w0, lt\n";
+                return;
+            }
+
+            if (op == "<=") {
+                out_ << "    fcmp d1, d0\n";
+                out_ << "    cset w0, le\n";
+                return;
+            }
+
+            if (op == ">") {
+                out_ << "    fcmp d1, d0\n";
+                out_ << "    cset w0, gt\n";
+                return;
+            }
+
+            if (op == ">=") {
+                out_ << "    fcmp d1, d0\n";
+                out_ << "    cset w0, ge\n";
+                return;
+            }
+
+            error("unsupported f64 binary operator '" + op + "'");
+        }
 
         generateExpr(*binaryExpr->left);
         out_ << "    str w0, [x28, #" << tempOffset << "]\n";
@@ -399,25 +612,44 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
             return;
         }
 
+        auto it = functionParamTypes_.find(callExpr->callee);
+        if (it == functionParamTypes_.end()) {
+            error("unknown function '" + callExpr->callee + "'");
+        }
+
+        const auto &paramTypes = it->second;
+
         if (callExpr->arguments.size() > 8) {
             error("more than 8 call arguments not supported yet");
         }
 
-        std::vector<int> argOffsets;
-        argOffsets.reserve(callExpr->arguments.size());
+        std::vector<std::pair<int, ast::Type>> argTemps;
+        argTemps.reserve(callExpr->arguments.size());
 
         int savedTempDepth = tempDepth_;
 
         for (const auto &arg : callExpr->arguments) {
+            ast::Type argType = inferExprType(*arg);
             int argOffset = currentTempOffset();
+
             generateExpr(*arg);
-            out_ << "    str w0, [x28, #" << argOffset << "]\n";
-            argOffsets.push_back(argOffset);
+
+            if (argType == ast::Type::f64()) {
+                out_ << "    str d0, [x28, #" << argOffset << "]\n";
+            } else {
+                out_ << "    str w0, [x28, #" << argOffset << "]\n";
+            }
+
+            argTemps.push_back({argOffset, argType});
             tempDepth_++;
         }
 
-        for (std::size_t i = 0; i < argOffsets.size(); ++i) {
-            out_ << "    ldr w" << i << ", [x28, #" << argOffsets[i] << "]\n";
+        for (std::size_t i = 0; i < argTemps.size(); ++i) {
+            if (paramTypes[i] == ast::Type::f64()) {
+                out_ << "    ldr d" << i << ", [x28, #" << argTemps[i].first << "]\n";
+            } else {
+                out_ << "    ldr w" << i << ", [x28, #" << argTemps[i].first << "]\n";
+            }
         }
 
         tempDepth_ = savedTempDepth;
