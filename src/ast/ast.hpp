@@ -41,6 +41,14 @@ namespace ast {
         }
     };
 
+    struct FloatExpr : Expr {
+        double value;
+
+        explicit FloatExpr(double value) : value(value) {
+
+        }
+    };
+
     struct VariableExpr : Expr {
         std::string name;
 

@@ -141,6 +141,12 @@ namespace ast {
             return;
         }
 
+        if (const auto *floatExpr = dynamic_cast<const FloatExpr*>(&expr)) {
+            indent(level);
+            out_ << "Float(" << floatExpr->value << ")\n";
+            return;
+        }
+
         if (const auto* varExpr = dynamic_cast<const VariableExpr*>(&expr)) {
             indent(level);
             out_ << "Variable(" << varExpr->name << ")\n";

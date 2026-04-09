@@ -3,7 +3,7 @@
 const char DEFAULT_RETURN = '\0';
 
 Lexer::Lexer(const std::string &source) : source_(source), pos_(0), line_(1), column_(1) {
-    // emnty on purpose
+    
 }
 
 char Lexer::peek() const {
@@ -113,8 +113,18 @@ Token Lexer::number() {
         advance();
     }
 
+    bool isFloat = false;
+    if(peek() == '.' && isDigit(peekNext())) {
+        isFloat = true;
+        advance();
+
+        while(isDigit(peek())) {
+            advance();
+        }
+    }
+
     return makeToken(
-        TokenKind::Integer,
+        isFloat ? TokenKind::Float : TokenKind::Integer,
         source_.substr(startPos, pos_ - startPos),
         startLine,
         startColumn

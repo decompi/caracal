@@ -10,6 +10,8 @@ std::string tokenKindToString(TokenKind kind) {
 
         case TokenKind::Integer:
             return "Integer";
+        case TokenKind::Float:
+            return "Float";
 
         case TokenKind::Identifier:
             return "Identifier";

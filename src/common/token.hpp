@@ -9,6 +9,7 @@ enum class TokenKind {
 
     // literals
     Integer,
+    Float,
 
     // identifiers
     Identifier,

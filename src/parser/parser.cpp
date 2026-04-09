@@ -380,6 +380,13 @@ ast::ExprPtr Parser::parsePrimary() {
         return std::make_unique<ast::IntegerExpr>(value);
     }
 
+    if(check(TokenKind::Float)) {
+        const Token &tok = advance();
+        double value = std::stod(tok.lexeme);
+
+        return std::make_unique<ast::FloatExpr>(value);
+    }
+    
     if (match(TokenKind::True)) {
         return std::make_unique<ast::BoolExpr>(true);
     }
