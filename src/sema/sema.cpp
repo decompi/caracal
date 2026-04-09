@@ -195,6 +195,10 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
         return ast::Type::i32();
     }
 
+    if (dynamic_cast<const ast::FloatExpr*>(&expr)) {
+        return ast::Type::f64();
+    }
+
     if (dynamic_cast<const ast::BoolExpr*>(&expr)) {
         return ast::Type::boolean();
     }
@@ -241,10 +245,13 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
         ast::Type operandType = analyzeExpr(*unaryExpr->operand);
 
         if (unaryExpr->op == "-") {
-            if (operandType != ast::Type::i32()) {
-                error("unary '-' requires an i32 operand");
+            if (operandType == ast::Type::i32()) {
+                return ast::Type::i32();
             }
-            return ast::Type::i32();
+            if (operandType == ast::Type::f64()) {
+                return ast::Type::f64();
+            }
+            error("unary '-' requires an i32 or f64 operand");
         }
 
         if (unaryExpr->op == "!") {
@@ -262,18 +269,35 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
         ast::Type rightType = analyzeExpr(*binaryExpr->right);
         const std::string &op = binaryExpr->op;
 
-        if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
+        if (op == "+" || op == "-" || op == "*" || op == "/") {
+            if (leftType == ast::Type::i32() && rightType == ast::Type::i32()) {
+                return ast::Type::i32();
+            }
+
+            if (leftType == ast::Type::f64() && rightType == ast::Type::f64()) {
+                return ast::Type::f64();
+            }
+
+            error("arithmetic operators require matching i32 or f64 operands");
+        }
+
+        if (op == "%") {
             if (leftType != ast::Type::i32() || rightType != ast::Type::i32()) {
-                error("arithmetic operators require i32 operands");
+                error("operator '%' requires i32 operands");
             }
             return ast::Type::i32();
         }
 
         if (op == "<" || op == "<=" || op == ">" || op == ">=") {
-            if (leftType != ast::Type::i32() || rightType != ast::Type::i32()) {
-                error("comparison operators require i32 operands");
+            if (leftType == ast::Type::i32() && rightType == ast::Type::i32()) {
+                return ast::Type::boolean();
             }
-            return ast::Type::boolean();
+
+            if (leftType == ast::Type::f64() && rightType == ast::Type::f64()) {
+                return ast::Type::boolean();
+            }
+
+            error("comparison operators require matching i32 or f64 operands");
         }
 
         if (op == "==" || op == "!=") {
