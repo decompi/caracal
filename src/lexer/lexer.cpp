@@ -153,6 +153,9 @@ Token Lexer::identifierOrKeyword() {
     if(text == "i32") {
         return makeToken(TokenKind::I32, text, startLine, startColumn);
     }
+    if(text == "f64") {
+        return makeToken(TokenKind::F64, text, startLine, startColumn);
+    }
     if(text == "bool") {
         return makeToken(TokenKind::Bool, text, startLine, startColumn);
     }

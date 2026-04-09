@@ -28,6 +28,8 @@ std::string tokenKindToString(TokenKind kind) {
             return "Return";
         case TokenKind::I32:
             return "I32";
+        case TokenKind::F64:
+            return "F64";
         case TokenKind::Bool:
             return "Bool";
         case TokenKind::True:

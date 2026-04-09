@@ -428,6 +428,10 @@ ast::Type Parser::parseType() {
         return ast::Type::i32();
     }
 
+    if(match(TokenKind::F64)) {
+        return ast::Type::f64();
+    }
+
     if (match(TokenKind::Bool)) {
         return ast::Type::boolean();
     }

@@ -6,6 +6,7 @@
 namespace ast {
     enum class TypeKind {
         I32,
+        F64,
         Bool,
         Array,
         Void,
@@ -20,12 +21,23 @@ namespace ast {
         static Type i32() {
             return {TypeKind::I32, nullptr, 0};
         }
+
+        static Type f64() {
+            return {
+                TypeKind::F64,
+                nullptr,
+                0
+            };
+        }
+
         static Type boolean() {
             return {TypeKind::Bool, nullptr, 0};
         }
+
         static Type voidType() {
             return {TypeKind::Void, nullptr, 0};
         }
+
         static Type error() {
             return {TypeKind::Error, nullptr, 0};
         }
@@ -70,6 +82,8 @@ namespace ast {
         switch(type.kind) {
             case TypeKind::I32:
                 return "i32";
+            case TypeKind::F64:
+                return "f64";
             case TypeKind::Bool:
                 return "bool";
             case TypeKind::Array:

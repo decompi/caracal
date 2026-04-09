@@ -21,6 +21,7 @@ enum class TokenKind {
     While,
     Return,
     I32,
+    F64,
     Bool,
     True,
     False,
