@@ -19,7 +19,8 @@ namespace {
             << "options:\n"
             << "  -o <file>   write assembly output to <file>\n"
             << "  --tokens    print tokens and stop\n"
-            << "  --ast       print AST and stop\n"
+            << "  --ast       print AST before optimization and stop\n"
+            << "  --ast-opt   run optimization and print AST after optimization\n"
             << "  --check     run lexer/parser/sema only and stop\n"
             << "  --opt       run AST optimization pass before codegen/check\n";
     }
@@ -35,6 +36,7 @@ int main(int argc, char** argv) {
     std::string outputPath = "build/out.s";
     bool printTokens = false;
     bool printAst = false;
+    bool printOptimizedAst = false;
     bool checkOnly = false;
     bool enableOpt = false;
 
@@ -57,6 +59,11 @@ int main(int argc, char** argv) {
 
         if (arg == "--ast") {
             printAst = true;
+            continue;
+        }
+
+        if (arg == "--ast-opt") {
+            printOptimizedAst = true;
             continue;
         }
 
@@ -145,9 +152,15 @@ int main(int argc, char** argv) {
         SemaAnalyzer sema;
         sema.analyze(program);
 
-        if (enableOpt) {
+        if (enableOpt || printOptimizedAst) {
             ConstantFolder folder;
             folder.run(program);
+        }
+
+        if (printOptimizedAst) {
+            ast::AstPrinter printer(std::cout);
+            printer.print(program);
+            return 0;
         }
 
         if (checkOnly) {
