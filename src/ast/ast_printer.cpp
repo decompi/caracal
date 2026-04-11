@@ -147,6 +147,12 @@ namespace ast {
             return;
         }
 
+        if (const auto* boolExpr = dynamic_cast<const BoolExpr*>(&expr)) {
+            indent(level);
+            out_ << "Bool(" << (boolExpr->value ? "true" : "false") << ")\n";
+            return;
+        }
+
         if (const auto* varExpr = dynamic_cast<const VariableExpr*>(&expr)) {
             indent(level);
             out_ << "Variable(" << varExpr->name << ")\n";
