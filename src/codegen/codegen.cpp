@@ -314,21 +314,22 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
             error("internal codegen error: indexed assignment on non-array");
         }
 
-        int indexTemp = currentTempOffset();
-        generateExpr(*indexAssignStmt->index);
-        generateArrayBoundsCheck(arrayInfo);
-        out_ << "    str w0, [x28, #" << indexTemp << "]\n";
+        int valueTemp = currentTempOffset();
         tempDepth_++;
 
         generateExpr(*indexAssignStmt->value);
+        out_ << "    str w0, [x28, #" << valueTemp << "]\n";
+
+        generateExpr(*indexAssignStmt->index);
+        generateArrayBoundsCheck(arrayInfo);
+        out_ << "    mov w1, #" << LOCAL_SLOT_SIZE << "\n";
+        out_ << "    mul w0, w0, w1\n";
+        out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
+        out_ << "    add x1, x1, w0, sxtw\n";
+        out_ << "    ldr w0, [x28, #" << valueTemp << "]\n";
+        out_ << "    str w0, [x1]\n";
 
         tempDepth_--;
-        out_ << "    ldr w1, [x28, #" << indexTemp << "]\n";
-        out_ << "    mov w2, #" << LOCAL_SLOT_SIZE << "\n";
-        out_ << "    mul w1, w1, w2\n";
-        out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
-        out_ << "    add x1, x1, w1, sxtw\n";
-        out_ << "    str w0, [x1]\n";
         return;
     }
 
