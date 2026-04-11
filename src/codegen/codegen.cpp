@@ -217,7 +217,10 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
     out_ << ".align 2\n";
     out_ << fn.name << ":\n";
 
-    out_ << "    stp x29, x30, [sp, -16]!\n";
+    out_ << "    sub sp, sp, #32\n";
+    out_ << "    str x28, [sp, #0]\n";
+    out_ << "    str x29, [sp, #8]\n";
+    out_ << "    str x30, [sp, #16]\n";
     out_ << "    mov x29, sp\n";
     out_ << "    sub sp, sp, #" << FRAME_SIZE << "\n";
     out_ << "    mov x28, sp\n";
@@ -250,7 +253,10 @@ void CodeGenerator::generateFunction(const ast::FunctionDecl &fn) {
 
     out_ << currentReturnLabel_ << ":\n";
     out_ << "    add sp, sp, #" << FRAME_SIZE << "\n";
-    out_ << "    ldp x29, x30, [sp], 16\n";
+    out_ << "    ldr x30, [sp, #16]\n";
+    out_ << "    ldr x29, [sp, #8]\n";
+    out_ << "    ldr x28, [sp, #0]\n";
+    out_ << "    add sp, sp, #32\n";
     out_ << "    ret\n";
 }
 
