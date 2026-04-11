@@ -14,7 +14,7 @@ struct LocalInfo {
 };
 
 struct CodeGenerator {
-    explicit CodeGenerator(std::ostream &out);
+    explicit CodeGenerator(std::ostream &out, bool enableSimd = false);
     void generate(const ast::Program &program);
 
 private:
@@ -23,6 +23,7 @@ private:
     static constexpr int TEMP_BASE_OFFSET = 256;
 
     std::ostream &out_;
+    bool enableSimd_;
 
     std::vector<std::unordered_map<std::string, LocalInfo>> localScopes_;
     std::unordered_map<std::string, ast::Type> functionReturnTypes_;
@@ -53,6 +54,7 @@ private:
     int currentTempOffset() const;
     std::string makeLabel(const std::string &prefix);
     std::string registerFloatConstant(double value);
+    bool shouldVectorizeLoop(const ast::WhileStmt &whileStmt) const;
     void generateArrayBoundsCheck(const LocalInfo &arrayInfo);
 
     [[noreturn]] void error(const std::string &message) const;

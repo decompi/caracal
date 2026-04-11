@@ -4,8 +4,8 @@
 #include <stdexcept>
 #include <vector>
 
-CodeGenerator::CodeGenerator(std::ostream &out)
-    : out_(out), nextLocalOffset_(16), tempDepth_(0), labelCounter_(0) {
+CodeGenerator::CodeGenerator(std::ostream &out, bool enableSimd)
+    : out_(out), enableSimd_(enableSimd), nextLocalOffset_(16), tempDepth_(0), labelCounter_(0) {
 }
 
 void CodeGenerator::generate(const ast::Program &program) {
@@ -190,6 +190,11 @@ std::string CodeGenerator::registerFloatConstant(double value) {
     return label;
 }
 
+bool CodeGenerator::shouldVectorizeLoop(const ast::WhileStmt &whileStmt) const {
+    (void)whileStmt;
+    return false;
+}
+
 void CodeGenerator::generateArrayBoundsCheck(const LocalInfo &arrayInfo) {
     if (!arrayInfo.type.isArray()) {
         error("internal codegen error: bounds check on non-array");
@@ -355,6 +360,9 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
     }
 
     if (const auto *whileStmt = dynamic_cast<const ast::WhileStmt*>(&stmt)) {
+        if (enableSimd_ && shouldVectorizeLoop(*whileStmt)) {
+            // add SIMD lowering later
+        }
         std::string condLabel = makeLabel("while_cond");
         std::string endLabel = makeLabel("while_end");
 

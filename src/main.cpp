@@ -22,7 +22,8 @@ namespace {
             << "  --ast       print AST before optimization and stop\n"
             << "  --ast-opt   run optimization and print AST after optimization\n"
             << "  --check     run lexer/parser/sema only and stop\n"
-            << "  --opt       run AST optimization pass before codegen/check\n";
+            << "  --opt       run AST optimization pass before codegen/check\n"
+            << "  --simd      enable SIMD-aware codegen for eligible loops\n";
     }
 }
 
@@ -39,6 +40,7 @@ int main(int argc, char** argv) {
     bool printOptimizedAst = false;
     bool checkOnly = false;
     bool enableOpt = false;
+    bool enableSimd = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -74,6 +76,11 @@ int main(int argc, char** argv) {
 
         if (arg == "--opt") {
             enableOpt = true;
+            continue;
+        }
+
+        if (arg == "--simd") {
+            enableSimd = true;
             continue;
         }
 
@@ -174,7 +181,7 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        CodeGenerator codegen(out);
+        CodeGenerator codegen(out, enableSimd);
         codegen.generate(program);
 
         std::cout << "codegen succeeded: wrote " << outputPath << "\n";
