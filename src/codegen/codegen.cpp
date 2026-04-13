@@ -190,9 +190,106 @@ std::string CodeGenerator::registerFloatConstant(double value) {
     return label;
 }
 
-bool CodeGenerator::shouldVectorizeLoop(const ast::WhileStmt &whileStmt) const {
-    (void)whileStmt;
-    return false;
+template<typename T>
+static const T* as(const ast::Expr* expr) {
+    return dynamic_cast<const T*>(expr);
+}
+
+static bool isIncrementStep(const ast::AssignStmt& step, std::string_view varName) {
+    const auto* expr = as<ast::BinaryExpr>(step.value.get());
+    if (!expr || expr->op != "+") {
+        return false;
+    }
+
+    const auto* lhs = as<ast::VariableExpr>(expr->left.get());
+    const auto* rhs = as<ast::IntegerExpr>(expr->right.get());
+    return lhs && rhs && lhs->name == varName && rhs->value == 1;
+}
+
+// is this a length-4 i32 array known in local scope?
+bool CodeGenerator::isVectorizableArray(const std::string name) const {
+    LocalInfo info = lookupLocal(name);
+    return info.type.isArray()
+        && info.type.arrayLength == 4
+        && *info.type.elementType == ast::Type::i32();
+}
+
+// does expr look like arrayName[indexVar] where arrayName is a length-4 i32 array?
+bool CodeGenerator::matchArrayIndex(const ast::Expr* expr, const std::string expectedIndex, std::string &arrayNameOut) const {
+    const auto* indexExpr = as<ast::IndexExpr>(expr);
+    if (!indexExpr) {
+        return false;
+    }
+
+    const auto* base = as<ast::VariableExpr>(indexExpr->base.get());
+    const auto* idx = as<ast::VariableExpr>(indexExpr->index.get());
+    if (!base || !idx || idx->name != expectedIndex) {
+        return false;
+    }
+    if (!isVectorizableArray(base->name)) {
+        return false;
+    }
+
+    arrayNameOut = base->name;
+    return true;
+}
+
+bool CodeGenerator::shouldVectorizeLoop(const ast::WhileStmt& whileStmt) const {
+    const auto* cond = as<ast::BinaryExpr>(whileStmt.condition.get());
+    if (!cond || cond->op != "<") {
+        return false;
+    }
+
+    const auto* indexVar = as<ast::VariableExpr>(cond->left.get());
+    const auto* tripCount = as<ast::IntegerExpr>(cond->right.get());
+    if (!indexVar || !tripCount || tripCount->value != 4) {
+        return false;
+    }
+    if (lookupLocal(indexVar->name).type != ast::Type::i32()) {
+        return false;
+    }
+
+    const auto& stmts = whileStmt.body->statements;
+    if (stmts.size() != 2) {
+        return false;
+    }
+
+    const auto* storeStmt = dynamic_cast<const ast::IndexAssignStmt*>(stmts[0].get());
+    const auto* stepStmt = dynamic_cast<const ast::AssignStmt*>(stmts[1].get());
+    if (!storeStmt || !stepStmt) {
+        return false;
+    }
+
+    if (stepStmt->name != indexVar->name) {
+        return false;
+    }
+    if (!isIncrementStep(*stepStmt, indexVar->name)) {
+        return false;
+    }
+
+    const auto* storeIdx = as<ast::VariableExpr>(storeStmt->index.get());
+    if (!storeIdx || storeIdx->name != indexVar->name) {
+        return false;
+    }
+    if (!isVectorizableArray(storeStmt->arrayName)) {
+        return false;
+    }
+
+    const auto* sumExpr = as<ast::BinaryExpr>(storeStmt->value.get());
+    if (!sumExpr || sumExpr->op != "+") {
+        return false;
+    }
+
+    std::string leftArray, rightArray;
+    if (!matchArrayIndex(sumExpr->left.get(), indexVar->name, leftArray)) {
+        return false;
+    }
+    if (!matchArrayIndex(sumExpr->right.get(), indexVar->name, rightArray)) {
+        return false;
+    }
+
+    const bool aliased = leftArray == storeStmt->arrayName || rightArray == storeStmt->arrayName || leftArray == rightArray;
+    return !aliased;
 }
 
 void CodeGenerator::generateArrayBoundsCheck(const LocalInfo &arrayInfo) {
@@ -368,7 +465,7 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
 
     if (const auto *whileStmt = dynamic_cast<const ast::WhileStmt*>(&stmt)) {
         if (enableSimd_ && shouldVectorizeLoop(*whileStmt)) {
-            // add SIMD lowering later
+            out_ << makeLabel("simd_candidate_i32_add") << ":\n";
         }
         std::string condLabel = makeLabel("while_cond");
         std::string endLabel = makeLabel("while_end");

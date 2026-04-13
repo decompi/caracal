@@ -20,15 +20,20 @@ struct CodeGenerator {
 private:
     static constexpr int FRAME_SIZE = 512;
     static constexpr int LOCAL_SLOT_SIZE = 16;
-    static constexpr int TEMP_BASE_OFFSET = 256;
+    static constexpr int TEMP_BASE_OFFSET = 256; // temporaries start here
 
     std::ostream &out_;
     bool enableSimd_;
 
-    std::vector<std::unordered_map<std::string, LocalInfo>> localScopes_;
-    std::unordered_map<std::string, ast::Type> functionReturnTypes_;
-    std::unordered_map<std::string, std::vector<ast::Type>> functionParamTypes_;
-    std::vector<std::pair<std::string, double>> floatConstants_;
+    using ScopeMap    = std::unordered_map<std::string, LocalInfo>;
+    using TypeMap     = std::unordered_map<std::string, ast::Type>;
+    using ParamTypes  = std::unordered_map<std::string, std::vector<ast::Type>>;
+
+    std::vector<ScopeMap> localScopes_;  // stack of active lexical scopes
+    TypeMap functionReturnTypes_;
+    ParamTypes functionParamTypes_;
+
+    std::vector<std::pair<std::string, double>> floatConstants_; // label -> value
 
     int nextLocalOffset_;
     int tempDepth_;
@@ -36,6 +41,7 @@ private:
     std::string currentReturnLabel_;
     std::string currentBoundsTrapLabel_;
 
+  
     void collectFunctionSignatures(const ast::Program &program);
 
     void generateFunction(const ast::FunctionDecl &fn);
@@ -45,16 +51,20 @@ private:
 
     void pushScope();
     void popScope();
-
     LocalInfo declareLocal(const std::string &name, const ast::Type &type);
-    LocalInfo lookupLocal(const std::string &name) const;
+    LocalInfo lookupLocal (const std::string &name) const;
 
+   
     ast::Type inferExprType(const ast::Expr &expr) const;
-
     int currentTempOffset() const;
     std::string makeLabel(const std::string &prefix);
     std::string registerFloatConstant(double value);
+
+    // returns true when a while loop matches the exact pattern that can be
+    // lowered to a SIMD vector add (requires enableSimd_).
     bool shouldVectorizeLoop(const ast::WhileStmt &whileStmt) const;
+    bool isVectorizableArray(std::string name) const;
+    bool matchArrayIndex(const ast::Expr *expr, std::string expectedIndex, std::string &arrayNameOut) const; 
     void generateArrayBoundsCheck(const LocalInfo &arrayInfo);
 
     [[noreturn]] void error(const std::string &message) const;
