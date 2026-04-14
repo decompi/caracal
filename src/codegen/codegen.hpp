@@ -51,12 +51,17 @@ private:
 
     void pushScope();
     void popScope();
-    LocalInfo declareLocal(const std::string &name, const ast::Type &type);
-    LocalInfo lookupLocal (const std::string &name) const;
 
-   
+    LocalInfo declareLocal(const std::string &name, const ast::Type &type);
+    LocalInfo lookupLocal(const std::string &name) const;
+
     ast::Type inferExprType(const ast::Expr &expr) const;
+
     int currentTempOffset() const;
+    int storageSizeForType(const ast::Type &type) const;
+    int alignmentForType(const ast::Type &type) const;
+    int arrayElementStride(const ast::Type &type) const;
+    static int alignUp(int value, int alignment);
     std::string makeLabel(const std::string &prefix);
     std::string registerFloatConstant(double value);
 

@@ -76,16 +76,8 @@ LocalInfo CodeGenerator::declareLocal(const std::string &name, const ast::Type &
         error("internal codegen error: duplicate local in current scope '" + name + "'");
     }
 
-    int slotCount = 1;
-    if (type.isArray()) {
-        if (*type.elementType != ast::Type::i32()) {
-            error("only i32 arrays are supported in codegen");
-        }
-        slotCount = static_cast<int>(type.arrayLength);
-    }
-
-    int offset = nextLocalOffset_;
-    nextLocalOffset_ += slotCount * LOCAL_SLOT_SIZE;
+    int offset = alignUp(nextLocalOffset_, alignmentForType(type));
+    nextLocalOffset_ = offset + storageSizeForType(type);
 
     if (nextLocalOffset_ >= TEMP_BASE_OFFSET) {
         error("stack frame exhausted; increase FRAME_SIZE/TEMP_BASE_OFFSET");
@@ -178,6 +170,53 @@ ast::Type CodeGenerator::inferExprType(const ast::Expr &expr) const {
 
 int CodeGenerator::currentTempOffset() const {
     return TEMP_BASE_OFFSET + tempDepth_ * LOCAL_SLOT_SIZE;
+}
+
+int CodeGenerator::storageSizeForType(const ast::Type &type) const {
+    if(type.isArray()) {
+        if(*type.elementType != ast::Type::i32()) {
+            error("only i32 arrays are supported in codegen");
+        }
+        return static_cast<int>(type.arrayLength) * 4;
+    }
+
+    if(type == ast::Type::f64()) {
+        return 0;
+    }
+
+    return 4;
+}
+
+int CodeGenerator::alignmentForType(const ast::Type &type) const {
+    if (type.isArray()) {
+        return 16;
+    }
+
+    if (type == ast::Type::f64()) {
+        return 8;
+    }
+
+    return 4;
+}
+
+int CodeGenerator::arrayElementStride(const ast::Type &type) const {
+    if (!type.isArray()) {
+        error("internal codegen error: requested array stride for non-array type");
+    }
+
+    if (*type.elementType != ast::Type::i32()) {
+        error("only i32 arrays are supported in codegen");
+    }
+
+    return 4;
+}
+
+int CodeGenerator::alignUp(int value, int alignment) {
+    int remainder = value % alignment;
+    if (remainder == 0) {
+        return value;
+    }
+    return value + (alignment - remainder);
 }
 
 std::string CodeGenerator::makeLabel(const std::string &prefix) {
@@ -379,7 +418,7 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
 
             for (std::size_t i = 0; i < arrayLiteral->elements.size(); ++i) {
                 generateExpr(*arrayLiteral->elements[i]);
-                out_ << "    str w0, [x28, #" << (info.offset + static_cast<int>(i) * LOCAL_SLOT_SIZE) << "]\n";
+                out_ << "    str w0, [x28, #" << (info.offset + static_cast<int>(i) * arrayElementStride(info.type)) << "]\n";
             }
             return;
         }
@@ -419,7 +458,7 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
 
         generateExpr(*indexAssignStmt->index);
         generateArrayBoundsCheck(arrayInfo);
-        out_ << "    mov w1, #" << LOCAL_SLOT_SIZE << "\n";
+        out_ << "    mov w1, #" << arrayElementStride(arrayInfo.type) << "\n";
         out_ << "    mul w0, w0, w1\n";
         out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
         out_ << "    add x1, x1, w0, sxtw\n";
@@ -530,7 +569,7 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
 
         generateExpr(*indexExpr->index);
         generateArrayBoundsCheck(arrayInfo);
-        out_ << "    mov w1, #" << LOCAL_SLOT_SIZE << "\n";
+        out_ << "    mov w1, #" << arrayElementStride(arrayInfo.type) << "\n";
         out_ << "    mul w0, w0, w1\n";
         out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
         out_ << "    add x1, x1, w0, sxtw\n";
