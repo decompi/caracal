@@ -181,7 +181,7 @@ int CodeGenerator::storageSizeForType(const ast::Type &type) const {
     }
 
     if(type == ast::Type::f64()) {
-        return 0;
+        return 8;
     }
 
     return 4;

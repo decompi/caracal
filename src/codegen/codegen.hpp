@@ -68,6 +68,7 @@ private:
     // returns true when a while loop matches the exact pattern that can be
     // lowered to a SIMD vector add (requires enableSimd_).
     bool shouldVectorizeLoop(const ast::WhileStmt &whileStmt) const;
+    void generateVectorizedI32AddLoop(const ast::WhileStmt &whileStmt);
     bool isVectorizableArray(std::string name) const;
     bool matchArrayIndex(const ast::Expr *expr, std::string expectedIndex, std::string &arrayNameOut) const; 
     void generateArrayBoundsCheck(const LocalInfo &arrayInfo);
