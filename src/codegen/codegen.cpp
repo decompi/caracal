@@ -331,6 +331,55 @@ bool CodeGenerator::shouldVectorizeLoop(const ast::WhileStmt& whileStmt) const {
     return !aliased;
 }
 
+void CodeGenerator::generateVectorizedI32AddLoop(const ast::WhileStmt &whileStmt) {
+    const auto* cond = as<ast::BinaryExpr>(whileStmt.condition.get());
+    const auto* indexVar = as<ast::VariableExpr>(cond->left.get());
+
+    const auto* storeStmt = dynamic_cast<const ast::IndexAssignStmt*>(whileStmt.body->statements[0].get());
+    const auto* sumExpr = as<ast::BinaryExpr>(storeStmt->value.get());
+
+    std::string leftArrayName;
+    std::string rightArrayName;
+    if (!matchArrayIndex(sumExpr->left.get(), indexVar->name, leftArrayName) ||
+        !matchArrayIndex(sumExpr->right.get(), indexVar->name, rightArrayName)) {
+        error("internal codegen error: failed to extract SIMD loop operands");
+    }
+
+    LocalInfo indexInfo = lookupLocal(indexVar->name);
+    LocalInfo leftInfo = lookupLocal(leftArrayName);
+    LocalInfo rightInfo = lookupLocal(rightArrayName);
+    LocalInfo outInfo = lookupLocal(storeStmt->arrayName);
+
+    std::string scalarLabel = makeLabel("simd_scalar_fallback");
+    std::string condLabel = makeLabel("while_cond");
+    std::string endLabel = makeLabel("while_end");
+
+    out_ << "    ldr w0, [x28, #" << indexInfo.offset << "]\n";
+    out_ << "    cmp w0, #0\n";
+    out_ << "    bne " << scalarLabel << "\n";
+
+    out_ << "    add x9, x28, #" << leftInfo.offset << "\n";
+    out_ << "    add x10, x28, #" << rightInfo.offset << "\n";
+    out_ << "    add x11, x28, #" << outInfo.offset << "\n";
+    out_ << "    ld1 {v0.4s}, [x9]\n";
+    out_ << "    ld1 {v1.4s}, [x10]\n";
+    out_ << "    add v2.4s, v0.4s, v1.4s\n";
+    out_ << "    st1 {v2.4s}, [x11]\n";
+    out_ << "    mov w0, #4\n";
+    out_ << "    str w0, [x28, #" << indexInfo.offset << "]\n";
+    out_ << "    b " << endLabel << "\n";
+
+    out_ << scalarLabel << ":\n";
+    out_ << condLabel << ":\n";
+    generateExpr(*whileStmt.condition);
+    out_ << "    cmp w0, #0\n";
+    out_ << "    beq " << endLabel << "\n";
+    generateBlock(*whileStmt.body);
+    out_ << "    b " << condLabel << "\n";
+
+    out_ << endLabel << ":\n";
+}
+
 void CodeGenerator::generateArrayBoundsCheck(const LocalInfo &arrayInfo) {
     if (!arrayInfo.type.isArray()) {
         error("internal codegen error: bounds check on non-array");
@@ -504,8 +553,10 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
 
     if (const auto *whileStmt = dynamic_cast<const ast::WhileStmt*>(&stmt)) {
         if (enableSimd_ && shouldVectorizeLoop(*whileStmt)) {
-            out_ << makeLabel("simd_candidate_i32_add") << ":\n";
+            generateVectorizedI32AddLoop(*whileStmt);
+            return;
         }
+
         std::string condLabel = makeLabel("while_cond");
         std::string endLabel = makeLabel("while_end");
 
