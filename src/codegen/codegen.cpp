@@ -246,16 +246,19 @@ static bool isIncrementStep(const ast::AssignStmt& step, std::string_view varNam
     return lhs && rhs && lhs->name == varName && rhs->value == 1;
 }
 
-// is this a length-4 i32 array known in local scope?
-bool CodeGenerator::isVectorizableArray(const std::string name) const {
+bool CodeGenerator::isVectorizableArrayOf(std::string name, const ast::Type &elementType, std::size_t length) const {
     LocalInfo info = lookupLocal(name);
     return info.type.isArray()
-        && info.type.arrayLength == 4
-        && *info.type.elementType == ast::Type::i32();
+        && info.type.arrayLength == length
+        && *info.type.elementType == elementType;
 }
 
-// does expr look like arrayName[indexVar] where arrayName is a length-4 i32 array?
-bool CodeGenerator::matchArrayIndex(const ast::Expr* expr, const std::string expectedIndex, std::string &arrayNameOut) const {
+// is this a length-4 i32 array known in local scope?
+bool CodeGenerator::isVectorizableArray(std::string name) const {
+    return isVectorizableArrayOf(std::move(name), ast::Type::i32(), 4);
+}
+
+bool CodeGenerator::matchArrayIndexOf(const ast::Expr *expr, std::string expectedIndex, const ast::Type &elementType, std::size_t length, std::string &arrayNameOut) const {
     const auto* indexExpr = as<ast::IndexExpr>(expr);
     if (!indexExpr) {
         return false;
@@ -266,12 +269,19 @@ bool CodeGenerator::matchArrayIndex(const ast::Expr* expr, const std::string exp
     if (!base || !idx || idx->name != expectedIndex) {
         return false;
     }
-    if (!isVectorizableArray(base->name)) {
+
+    if (!isVectorizableArrayOf(base->name, elementType, length)) {
         return false;
     }
 
     arrayNameOut = base->name;
     return true;
+}
+
+
+// does expr look like arrayName[indexVar] where arrayName is a length-4 i32 array?
+bool CodeGenerator::matchArrayIndex(const ast::Expr* expr, const std::string expectedIndex, std::string &arrayNameOut) const {
+    return matchArrayIndexOf(expr, expectedIndex, ast::Type::i32(), 4, arrayNameOut);
 }
 
 bool CodeGenerator::shouldVectorizeLoop(const ast::WhileStmt& whileStmt) const {
@@ -332,6 +342,71 @@ bool CodeGenerator::shouldVectorizeLoop(const ast::WhileStmt& whileStmt) const {
     return !aliased;
 }
 
+bool CodeGenerator::shouldVectorizeF64Loop(const ast::WhileStmt& whileStmt) const {
+    const auto* cond = as<ast::BinaryExpr>(whileStmt.condition.get());
+    if (!cond || cond->op != "<") {
+        return false;
+    }
+
+    const auto* indexVar = as<ast::VariableExpr>(cond->left.get());
+    const auto* tripCount = as<ast::IntegerExpr>(cond->right.get());
+    if (!indexVar || !tripCount || tripCount->value != 2) {
+        return false;
+    }
+
+    if (lookupLocal(indexVar->name).type != ast::Type::i32()) {
+        return false;
+    }
+
+    const auto& stmts = whileStmt.body->statements;
+    if (stmts.size() != 2) {
+        return false;
+    }
+
+    const auto* storeStmt = dynamic_cast<const ast::IndexAssignStmt*>(stmts[0].get());
+    const auto* stepStmt = dynamic_cast<const ast::AssignStmt*>(stmts[1].get());
+    if (!storeStmt || !stepStmt) {
+        return false;
+    }
+
+    if (stepStmt->name != indexVar->name) {
+        return false;
+    }
+
+    if (!isIncrementStep(*stepStmt, indexVar->name)) {
+        return false;
+    }
+
+    const auto* storeIdx = as<ast::VariableExpr>(storeStmt->index.get());
+    if (!storeIdx || storeIdx->name != indexVar->name) {
+        return false;
+    }
+
+    if (!isVectorizableArrayOf(storeStmt->arrayName, ast::Type::f64(), 2)) {
+        return false;
+    }
+
+    const auto* sumExpr = as<ast::BinaryExpr>(storeStmt->value.get());
+    if (!sumExpr || sumExpr->op != "+") {
+        return false;
+    }
+
+    std::string leftArray;
+    std::string rightArray;
+    if (!matchArrayIndexOf(sumExpr->left.get(), indexVar->name, ast::Type::f64(), 2, leftArray)) {
+        return false;
+    }
+
+    if (!matchArrayIndexOf(sumExpr->right.get(), indexVar->name, ast::Type::f64(), 2, rightArray)) {
+        return false;
+    }
+
+    const bool aliased = leftArray == storeStmt->arrayName || rightArray == storeStmt->arrayName || leftArray == rightArray;
+
+    return !aliased;
+}
+
+
 void CodeGenerator::generateVectorizedI32AddLoop(const ast::WhileStmt &whileStmt) {
     const auto* cond = as<ast::BinaryExpr>(whileStmt.condition.get());
     const auto* indexVar = as<ast::VariableExpr>(cond->left.get());
@@ -380,6 +455,56 @@ void CodeGenerator::generateVectorizedI32AddLoop(const ast::WhileStmt &whileStmt
 
     out_ << endLabel << ":\n";
 }
+
+void CodeGenerator::generateVectorizedF64AddLoop(const ast::WhileStmt &whileStmt) {
+    const auto* cond = as<ast::BinaryExpr>(whileStmt.condition.get());
+    const auto* indexVar = as<ast::VariableExpr>(cond->left.get());
+
+    const auto* storeStmt = dynamic_cast<const ast::IndexAssignStmt*>(whileStmt.body->statements[0].get());
+    const auto* sumExpr = as<ast::BinaryExpr>(storeStmt->value.get());
+
+    std::string leftArrayName;
+    std::string rightArrayName;
+    if (!matchArrayIndexOf(sumExpr->left.get(), indexVar->name, ast::Type::f64(), 2, leftArrayName) ||
+        !matchArrayIndexOf(sumExpr->right.get(), indexVar->name, ast::Type::f64(), 2, rightArrayName)) {
+        error("internal codegen error: failed to extract f64 SIMD loop operands");
+    }
+
+    LocalInfo indexInfo = lookupLocal(indexVar->name);
+    LocalInfo leftInfo = lookupLocal(leftArrayName);
+    LocalInfo rightInfo = lookupLocal(rightArrayName);
+    LocalInfo outInfo = lookupLocal(storeStmt->arrayName);
+
+    std::string scalarLabel = makeLabel("simd_f64_scalar_fallback");
+    std::string condLabel = makeLabel("while_cond");
+    std::string endLabel = makeLabel("while_end");
+
+    out_ << "    ldr w0, [x28, #" << indexInfo.offset << "]\n";
+    out_ << "    cmp w0, #0\n";
+    out_ << "    bne " << scalarLabel << "\n";
+
+    out_ << "    add x9, x28, #" << leftInfo.offset << "\n";
+    out_ << "    add x10, x28, #" << rightInfo.offset << "\n";
+    out_ << "    add x11, x28, #" << outInfo.offset << "\n";
+    out_ << "    ld1 {v0.2d}, [x9]\n";
+    out_ << "    ld1 {v1.2d}, [x10]\n";
+    out_ << "    fadd v2.2d, v0.2d, v1.2d\n";
+    out_ << "    st1 {v2.2d}, [x11]\n";
+    out_ << "    mov w0, #2\n";
+    out_ << "    str w0, [x28, #" << indexInfo.offset << "]\n";
+    out_ << "    b " << endLabel << "\n";
+
+    out_ << scalarLabel << ":\n";
+    out_ << condLabel << ":\n";
+    generateExpr(*whileStmt.condition);
+    out_ << "    cmp w0, #0\n";
+    out_ << "    beq " << endLabel << "\n";
+    generateBlock(*whileStmt.body);
+    out_ << "    b " << condLabel << "\n";
+
+    out_ << endLabel << ":\n";
+}
+
 
 void CodeGenerator::generateArrayBoundsCheck(const LocalInfo &arrayInfo) {
     if (!arrayInfo.type.isArray()) {
@@ -573,6 +698,11 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
     if (const auto *whileStmt = dynamic_cast<const ast::WhileStmt*>(&stmt)) {
         if (enableSimd_ && shouldVectorizeLoop(*whileStmt)) {
             generateVectorizedI32AddLoop(*whileStmt);
+            return;
+        }
+
+        if (enableSimd_ && shouldVectorizeF64Loop(*whileStmt)) {
+            generateVectorizedF64AddLoop(*whileStmt);
             return;
         }
 
