@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -u
 
-REMOTE="${CARACAL_REMOTE:-decompi@10.196.91.174}"
+REMOTE="${CARACAL_REMOTE:-}"
 REMOTE_BIN_PATH="${CARACAL_REMOTE_BIN_PATH:-caracal_simd_test_bin}"
 COMPILER="./build/caracal"
 BUILD_DIR="build/simd_tests"
 
 I32_EXAMPLE="examples/codegen/simd_add_i32_loop.cr"
 F64_EXAMPLE="examples/codegen/simd_add_f64_loop.cr"
+
+if [ -z "$REMOTE" ]; then
+    echo "error: CARACAL_REMOTE is not set"
+    echo "usage: CARACAL_REMOTE=user@host ./scripts/test_simd.sh"
+    exit 1
+fi
 
 mkdir -p "$BUILD_DIR"
 
