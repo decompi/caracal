@@ -20,6 +20,14 @@ void SemaAnalyzer::collectFunctions(const ast::Program &program) {
         {ast::Type::i32()},
         ast::Type::voidType()
     };
+    functions_["sqrt"] = FunctionSymbol{
+        {ast::Type::f64()},
+        ast::Type::f64()
+    };
+    functions_["exp"] = FunctionSymbol{
+        {ast::Type::f64()},
+        ast::Type::f64()
+    };
 
     for (const auto &fn : program.functions) {
         if (functions_.count(fn->name)) {
@@ -324,6 +332,19 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
             }
 
             return ast::Type::voidType();
+        }
+
+        if (callExpr->callee == "sqrt" || callExpr->callee == "exp") {
+            if (callExpr->arguments.size() != 1) {
+                error(callExpr->callee + " expects exactly 1 argument");
+            }
+
+            ast::Type argType = analyzeExpr(*callExpr->arguments[0]);
+            if (argType != ast::Type::f64()) {
+                error(callExpr->callee + " expects an f64 argument");
+            }
+
+            return ast::Type::f64();
         }
 
         auto it = functions_.find(callExpr->callee);

@@ -24,6 +24,7 @@ void CodeGenerator::generate(const ast::Program &program) {
     out_ << ".text\n";
     out_ << ".extern printf\n";
     out_ << ".extern abort\n\n";
+    out_ << ".extern exp\n\n";
 
     for (const auto &fn : program.functions) {
         generateFunction(*fn);
@@ -44,6 +45,10 @@ void CodeGenerator::generate(const ast::Program &program) {
 void CodeGenerator::collectFunctionSignatures(const ast::Program &program) {
     functionParamTypes_["print"] = {ast::Type::i32()};
     functionReturnTypes_["print"] = ast::Type::voidType();
+    functionParamTypes_["sqrt"] = {ast::Type::f64()};
+    functionReturnTypes_["sqrt"] = ast::Type::f64();
+    functionParamTypes_["exp"] = {ast::Type::f64()};
+    functionReturnTypes_["exp"] = ast::Type::f64();
 
     for (const auto &fn : program.functions) {
         std::vector<ast::Type> paramTypes;
@@ -981,6 +986,16 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
             }
 
             error("print only supports i32 and f64 in codegen");
+        }
+
+        if (callExpr->callee == "sqrt") {
+            if (callExpr->arguments.size() != 1) {
+                error("sqrt expects exactly 1 argument");
+            }
+
+            generateExpr(*callExpr->arguments[0]);
+            out_ << "    fsqrt d0, d0\n";
+            return;
         }
 
         auto it = functionParamTypes_.find(callExpr->callee);
