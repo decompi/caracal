@@ -122,9 +122,11 @@ void SemaAnalyzer::analyzeStmt(const ast::Stmt &stmt) {
             error("cannot index non-array variable '" + indexAssignStmt->arrayName + "'");
         }
 
-        if (*arrayType.elementType != ast::Type::i32()) {
-            error("only i32 arrays are supported yet");
+        if (*arrayType.elementType != ast::Type::i32() &&
+            *arrayType.elementType != ast::Type::f64()) {
+            error("only i32 and f64 arrays are supported yet");
         }
+
 
         ast::Type indexType = analyzeExpr(*indexAssignStmt->index);
         if (indexType != ast::Type::i32()) {
@@ -213,8 +215,8 @@ ast::Type SemaAnalyzer::analyzeExpr(const ast::Expr &expr) {
         }
 
         ast::Type firstType = analyzeExpr(*arrayLiteralExpr->elements[0]);
-        if (firstType != ast::Type::i32()) {
-            error("only i32 array literals are supported yet");
+        if (firstType != ast::Type::i32() && firstType != ast::Type::f64()) {
+            error("only i32 and f64 array literals are supported yet");
         }
 
         for (std::size_t i = 1; i < arrayLiteralExpr->elements.size(); ++i) {

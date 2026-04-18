@@ -174,10 +174,7 @@ int CodeGenerator::currentTempOffset() const {
 
 int CodeGenerator::storageSizeForType(const ast::Type &type) const {
     if(type.isArray()) {
-        if(*type.elementType != ast::Type::i32()) {
-            error("only i32 arrays are supported in codegen");
-        }
-        return static_cast<int>(type.arrayLength) * 4;
+        return static_cast<int>(type.arrayLength) * arrayElementStride(type);
     }
 
     if(type == ast::Type::f64()) {
@@ -204,11 +201,15 @@ int CodeGenerator::arrayElementStride(const ast::Type &type) const {
         error("internal codegen error: requested array stride for non-array type");
     }
 
-    if (*type.elementType != ast::Type::i32()) {
-        error("only i32 arrays are supported in codegen");
+    if (*type.elementType == ast::Type::i32()) {
+        return 4;
     }
 
-    return 4;
+    if (*type.elementType == ast::Type::f64()) {
+        return 8;
+    }
+
+    error("only i32 and f64 arrays are supported in codegen");
 }
 
 int CodeGenerator::alignUp(int value, int alignment) {
@@ -467,8 +468,15 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
 
             for (std::size_t i = 0; i < arrayLiteral->elements.size(); ++i) {
                 generateExpr(*arrayLiteral->elements[i]);
-                out_ << "    str w0, [x28, #" << (info.offset + static_cast<int>(i) * arrayElementStride(info.type)) << "]\n";
+
+                int elementOffset = info.offset + static_cast<int>(i) * arrayElementStride(info.type);
+                if (*info.type.elementType == ast::Type::f64()) {
+                    out_ << "    str d0, [x28, #" << elementOffset << "]\n";
+                } else {
+                    out_ << "    str w0, [x28, #" << elementOffset << "]\n";
+                }
             }
+
             return;
         }
 
@@ -499,11 +507,17 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
             error("internal codegen error: indexed assignment on non-array");
         }
 
+        bool isF64Element = *arrayInfo.type.elementType == ast::Type::f64();
+
         int valueTemp = currentTempOffset();
         tempDepth_++;
 
         generateExpr(*indexAssignStmt->value);
-        out_ << "    str w0, [x28, #" << valueTemp << "]\n";
+        if (isF64Element) {
+            out_ << "    str d0, [x28, #" << valueTemp << "]\n";
+        } else {
+            out_ << "    str w0, [x28, #" << valueTemp << "]\n";
+        }
 
         generateExpr(*indexAssignStmt->index);
         generateArrayBoundsCheck(arrayInfo);
@@ -511,8 +525,13 @@ void CodeGenerator::generateStmt(const ast::Stmt &stmt) {
         out_ << "    mul w0, w0, w1\n";
         out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
         out_ << "    add x1, x1, w0, sxtw\n";
-        out_ << "    ldr w0, [x28, #" << valueTemp << "]\n";
-        out_ << "    str w0, [x1]\n";
+        if (isF64Element) {
+            out_ << "    ldr d0, [x28, #" << valueTemp << "]\n";
+            out_ << "    str d0, [x1]\n";
+        } else {
+            out_ << "    ldr w0, [x28, #" << valueTemp << "]\n";
+            out_ << "    str w0, [x1]\n";
+        }
 
         tempDepth_--;
         return;
@@ -624,7 +643,11 @@ void CodeGenerator::generateExpr(const ast::Expr &expr) {
         out_ << "    mul w0, w0, w1\n";
         out_ << "    add x1, x28, #" << arrayInfo.offset << "\n";
         out_ << "    add x1, x1, w0, sxtw\n";
-        out_ << "    ldr w0, [x1]\n";
+        if (*arrayInfo.type.elementType == ast::Type::f64()) {
+            out_ << "    ldr d0, [x1]\n";
+        } else {
+            out_ << "    ldr w0, [x1]\n";
+        }
         return;
     }
 
